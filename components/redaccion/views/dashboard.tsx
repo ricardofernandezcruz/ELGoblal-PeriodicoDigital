@@ -30,7 +30,7 @@ export function Kpi({ label, value, delta, live }: { label: React.ReactNode; val
 }
 
 export function Dashboard() {
-  const { news, newNote, openEd, go } = useAdmin()
+  const { me, news, newNote, openEd, go } = useAdmin()
   const [live, setLive] = useState(1284)
   useEffect(() => {
     const t = setInterval(() => setLive((l) => l + Math.round(Math.random() * 18 - 8)), 2500)
@@ -49,7 +49,7 @@ export function Dashboard() {
     <>
       <div className="mb-[18px] flex flex-wrap items-end gap-3">
         <div>
-          <h2 className="m-0 font-serif text-[30px] font-semibold">{sal}, Carla</h2>
+          <h2 className="m-0 font-serif text-[30px] font-semibold">{sal}, {me.name.split(' ')[0]}</h2>
           <div className="text-sm text-eg-muted">Esto es lo que necesita tu atención hoy.</div>
         </div>
         <span className="flex-1" />

@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
 import { Icon, type IconName } from '@/components/eg/icon'
 import { toggleTheme } from '@/components/eg/theme'
+import { authClient } from '@/lib/auth-client'
+import { ROLE_LABEL } from '@/lib/permissions'
+import type { CurrentUser } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import { VIEWS, type View } from './data'
 import { AdminProvider, useAdmin } from './store'
@@ -17,9 +20,9 @@ import { NewsView } from './views/news'
 import { Stats } from './views/stats'
 import { Team } from './views/team'
 
-export default function Redaccion() {
+export default function Redaccion({ user }: { user: CurrentUser }) {
   return (
-    <AdminProvider>
+    <AdminProvider me={user}>
       <Shell />
     </AdminProvider>
   )
@@ -46,7 +49,7 @@ function NavBtn({ v, icon, children, count }: { v: View; icon: IconName; childre
 }
 
 function Shell() {
-  const { view, news, com, sbOpen, setSbOpen, setPal, newNote, toast } = useAdmin()
+  const { me, view, news, com, sbOpen, setSbOpen, setPal, newNote, toast } = useAdmin()
   const rev = news.filter((n) => n.st === 'rev').length
 
   useEffect(() => {
@@ -110,10 +113,20 @@ function Shell() {
             <div className="size-9 overflow-hidden rounded-full">
               <ArtImg src="av1" />
             </div>
-            <div>
-              <b className="block text-[13px] text-white">Carla Méndez</b>
-              <span className="text-xs text-[#8a98ab]">Editora</span>
+            <div className="min-w-0 flex-1">
+              <b className="block truncate text-[13px] text-white">{me.name}</b>
+              <span className="text-xs text-[#8a98ab]">{ROLE_LABEL[me.role]}</span>
             </div>
+            <button
+              type="button"
+              className="rounded-md border-0 bg-transparent px-2 py-1 text-xs text-[#8a98ab] hover:bg-white/8 hover:text-white"
+              onClick={async () => {
+                await authClient.signOut()
+                window.location.href = '/redaccion/login'
+              }}
+            >
+              Salir
+            </button>
           </div>
         </aside>
         {sbOpen && (

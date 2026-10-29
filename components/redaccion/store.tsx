@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/eg/icon'
+import type { CurrentUser } from '@/lib/session'
 import {
   D,
   emptyEditor,
@@ -24,6 +25,7 @@ import { B, Dialog, DlgRow, DlgTitle } from './ui'
 
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>
 type Ctx = {
+  me: CurrentUser
   view: View
   show: (v: View) => void
   go: (v: View) => void
@@ -51,7 +53,7 @@ type Ctx = {
 const AdminContext = createContext<Ctx | null>(null)
 export const useAdmin = () => useContext(AdminContext)!
 
-export function AdminProvider({ children }: { children: React.ReactNode }) {
+export function AdminProvider({ me, children }: { me: CurrentUser; children: React.ReactNode }) {
   const [view, setView] = useState<View>('dash')
   const [news, setNews] = useState(initialNews)
   const [media, setMedia] = useState(initialMedia)
@@ -203,6 +205,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   return (
     <AdminContext.Provider
       value={{
+        me,
         view,
         show,
         go,
