@@ -364,6 +364,14 @@ function tempPassword() {
   return out.join('')
 }
 
+/** Contraseña elegida por el administrador; vacía = se genera una temporal. */
+const chosenPassword = z
+  .string()
+  .max(128)
+  .optional()
+  .transform((p) => p || undefined)
+  .refine((p) => p === undefined || p.length >= 12, 'La contraseña debe tener al menos 12 caracteres.')
+
 async function adminCount() {
   const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(user).where(eq(user.role, 'admin'))
   return r.n
@@ -444,14 +452,14 @@ export async function setUserAvatar(targetId: string, mediaId: string | null): P
   })
 }
 
-/** Nueva contraseña temporal para otra persona. Cierra todas sus sesiones. */
-export async function resetUserPassword(targetId: string): Promise<ActionResult<string>> {
+/** Nueva contraseña para otra persona (la escrita por el administrador o una temporal). Cierra todas sus sesiones. */
+export async function resetUserPassword(targetId: string, chosen?: string): Promise<ActionResult<string>> {
   return run(async () => {
     const u = await requirePermission('team.manage')
     const id = userId.parse(targetId)
     if (id === u.id) throw new UserError('Para tu propia cuenta, usa «Mi cuenta» → Contraseña.')
     await loadTeamUser(id)
-    const password = tempPassword()
+    const password = chosenPassword.parse(chosen) ?? tempPassword()
     const hash = await hashPassword(password)
     const [acc] = await db.select({ id: account.id }).from(account).where(and(eq(account.userId, id), eq(account.providerId, 'credential')))
     if (acc) await db.update(account).set({ password: hash, updatedAt: new Date() }).where(eq(account.id, acc.id))
@@ -506,9 +514,9 @@ async function uniqueAuthorSlug(name: string) {
   for (let i = 2; ; i++) if (!taken.has(`${root}-${i}`)) return `${root}-${i}`
 }
 
-const inviteSchema = z.object({ name: z.string().trim().min(2).max(80), email: z.email().max(200), role: z.enum(ROLES) })
+const inviteSchema = z.object({ name: z.string().trim().min(2).max(80), email: z.email().max(200), role: z.enum(ROLES), password: chosenPassword })
 
-/** Crea la cuenta con una contraseña temporal que se muestra una sola vez al administrador. */
+/** Crea la cuenta con la contraseña escrita por el administrador o una temporal que se muestra una sola vez. */
 export async function createTeamUser(input: z.input<typeof inviteSchema>): Promise<ActionResult<{ user: AdminUser; password: string }>> {
   return run(async () => {
     const u = await requirePermission('team.manage')
@@ -516,7 +524,7 @@ export async function createTeamUser(input: z.input<typeof inviteSchema>): Promi
     const email = d.email.toLowerCase()
     const [dup] = await db.select({ id: user.id }).from(user).where(eq(user.email, email))
     if (dup) throw new UserError('Ya existe una cuenta con ese correo.')
-    const password = tempPassword()
+    const password = d.password ?? tempPassword()
     const id = crypto.randomUUID()
     await db.insert(user).values({ id, name: d.name, email, role: d.role, emailVerified: true })
     await db.insert(account).values({ id: crypto.randomUUID(), accountId: id, providerId: 'credential', userId: id, password: await hashPassword(password), updatedAt: new Date() })

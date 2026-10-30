@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import { createTeamUser, setUserRole } from '@/app/redaccion/actions'
+import { PasswordInput } from '@/components/eg/password-input'
 import { ROLES, type Role } from '@/lib/roles'
 import { MATRIX, PERMISSION_LABEL, PERMISSIONS, ROLE_LABEL } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,7 @@ function Invite() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('writer')
+  const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   return (
@@ -22,8 +24,9 @@ function Invite() {
         e.preventDefault()
         if (name.trim().length < 2) return setErr('Escribe el nombre de la persona.')
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr('Escribe un correo válido, por ejemplo nombre@correo.com')
+        if (password && password.length < 12) return setErr('La contraseña debe tener al menos 12 caracteres, o déjala vacía.')
         setBusy(true)
-        const r = await call(createTeamUser({ name, email, role }))
+        const r = await call(createTeamUser({ name, email, role, password }))
         setBusy(false)
         if (!r) return
         setTeam((t) => [...t, r.user])
@@ -31,7 +34,7 @@ function Invite() {
       }}
     >
       <DlgTitle>Añadir a alguien al equipo</DlgTitle>
-      <p className="text-sm text-eg-muted">Se crea la cuenta con una contraseña temporal que verás una sola vez. Pásasela a la persona por un canal seguro.</p>
+      <p className="text-sm text-eg-muted">Pásale los datos de acceso a la persona por un canal seguro. Podrá cambiar la contraseña en «Mi cuenta».</p>
       <div className="mt-3 flex flex-col gap-1.5">
         <label htmlFor="in" className="text-[13px] font-semibold">
           Nombre
@@ -55,6 +58,13 @@ function Invite() {
             </option>
           ))}
         </select>
+      </div>
+      <div className="mt-3 flex flex-col gap-1.5">
+        <label htmlFor="ip" className="text-[13px] font-semibold">
+          Contraseña <span className="font-normal text-eg-muted">(opcional)</span>
+        </label>
+        <PasswordInput id="ip" autoComplete="new-password" className={inp} value={password} onChange={(e) => (setPassword(e.target.value), setErr(''))} />
+        <div className={hint}>Mínimo 12 caracteres. Si la dejas vacía, se genera una segura automáticamente.</div>
       </div>
       <div className={cn(hint, 'mt-2 min-h-5 text-eg-accent')} role="alert">
         {err}
@@ -89,7 +99,7 @@ function Created({ email, password }: { email: string; password: string }) {
           v="out"
           onClick={() =>
             navigator.clipboard
-              .writeText(`Acceso: ${location.origin}/redaccion/login\nCorreo: ${email}\nContraseña temporal: ${password}`)
+              .writeText(`Acceso: ${location.origin}/redaccion/login\nCorreo: ${email}\nContraseña: ${password}`)
               .then(
                 () => toast('Datos copiados'),
                 () => toast('No se pudo copiar'),

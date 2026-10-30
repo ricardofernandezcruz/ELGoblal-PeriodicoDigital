@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { deleteTeamUser, resetUserPassword, resetUserTwoFactor, revokeUserSessions, setUserAvatar, updateProfile } from '@/app/redaccion/actions'
 import { ArtImg } from '@/components/eg/art'
+import { PasswordInput } from '@/components/eg/password-input'
 import { ROLE_LABEL } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import type { AdminUser } from '../data'
@@ -134,7 +135,7 @@ function TempPassword({ name, email, password }: { name: string; email: string; 
   return (
     <div className="mt-3 rounded-lg bg-eg-soft p-3">
       <p className="m-0 mb-2 text-sm">
-        Nueva contraseña temporal de <b>{name}</b>. Se muestra solo esta vez; sus sesiones abiertas se cerraron.
+        Nueva contraseña de <b>{name}</b>. Se muestra solo esta vez; sus sesiones abiertas se cerraron.
       </p>
       <code className="block font-mono text-[15px] break-all select-all">{password}</code>
       <B
@@ -143,7 +144,7 @@ function TempPassword({ name, email, password }: { name: string; email: string; 
         className="mt-2"
         onClick={() =>
           navigator.clipboard
-            .writeText(`Acceso: ${location.origin}/redaccion/login\nCorreo: ${email}\nContraseña temporal: ${password}`)
+            .writeText(`Acceso: ${location.origin}/redaccion/login\nCorreo: ${email}\nContraseña: ${password}`)
             .then(
               () => toast('Datos copiados'),
               () => toast('No se pudo copiar'),
@@ -162,6 +163,8 @@ function Security({ target }: { target: AdminUser }) {
   const { call, toast, setTeam, closeDialog } = useAdmin()
   const [confirm, setConfirm] = useState<'' | 'pw' | '2fa' | 'del'>('')
   const [temp, setTemp] = useState('')
+  const [pw, setPw] = useState('')
+  const [pwErr, setPwErr] = useState('')
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const row = 'flex flex-wrap items-center justify-between gap-3 border-b border-eg-rule py-3'
@@ -171,21 +174,23 @@ function Security({ target }: { target: AdminUser }) {
       <div className={row}>
         <div>
           <b>Contraseña</b>
-          <div className="text-xs text-eg-muted">Genera una contraseña temporal nueva y cierra sus sesiones.</div>
+          <div className="text-xs text-eg-muted">Pon una contraseña nueva (o genera una) y cierra sus sesiones.</div>
         </div>
         {confirm === 'pw' ? (
           <span className="flex gap-2">
-            <B v="ghost" sm onClick={() => setConfirm('')}>
+            <B v="ghost" sm onClick={() => (setConfirm(''), setPw(''), setPwErr(''))}>
               Cancelar
             </B>
             <B
               sm
               disabled={busy}
               onClick={async () => {
+                if (pw && pw.length < 12) return setPwErr('Mínimo 12 caracteres, o déjala vacía para generar una.')
                 setBusy(true)
-                const p = await call(resetUserPassword(target.id))
+                const p = await call(resetUserPassword(target.id, pw))
                 setBusy(false)
                 setConfirm('')
+                setPw('')
                 if (p) setTemp(p)
               }}
             >
@@ -199,6 +204,17 @@ function Security({ target }: { target: AdminUser }) {
           </B>
         )}
       </div>
+      {confirm === 'pw' && (
+        <div className="mt-3 flex flex-col gap-1.5">
+          <label htmlFor="rp" className="text-[13px] font-semibold">
+            Nueva contraseña <span className="font-normal text-eg-muted">(opcional)</span>
+          </label>
+          <PasswordInput id="rp" autoComplete="new-password" className={inp} value={pw} aria-invalid={!!pwErr} onChange={(e) => (setPw(e.target.value), setPwErr(''))} />
+          <div className={cn(hint, pwErr && 'text-eg-accent')} role={pwErr ? 'alert' : undefined}>
+            {pwErr || 'Mínimo 12 caracteres. Vacía = se genera una segura automáticamente.'}
+          </div>
+        </div>
+      )}
       {temp && <TempPassword name={target.name} email={target.email} password={temp} />}
 
       <div className={row}>
