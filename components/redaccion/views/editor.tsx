@@ -2,30 +2,29 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
-import { isArt } from '@/lib/art'
 import { cn } from '@/lib/utils'
+import { getVersion, listVersions, saveArticle, setArticleStatus } from '@/app/redaccion/actions'
 import {
-  AUTH,
   BH,
   BI,
   D,
   fd,
+  hm,
   LBL,
   loc,
   mk,
-  SECS,
   slugify,
   ST,
   type Block,
   type BlockType,
   type Editor,
   type Mode,
-  type Status,
 } from '../data'
 import { TplBtn, TplGrid, useAdmin } from '../store'
 import {
   B,
   Badge,
+  btnClass,
   Card,
   Chip,
   cp,
@@ -127,53 +126,103 @@ function AutoTA({
   return <textarea ref={ref} value={value} {...props} />
 }
 
+const hasContent = (b: Block) => !!(b.v?.trim() || b.mediaId || b.u?.trim() || b.n?.trim())
+
 function EditorInner() {
-  const { E: e, setE, toast, dialog, closeDialog, setNews, news, show, newNote } = useAdmin()
+  const { E: e, setE, toast, dialog, closeDialog, setNews, show, newNote, call, can, sections, authors } = useAdmin()
   const E = e!
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const leadRef = useRef<HTMLTextAreaElement>(null)
   const [rev, setRev] = useState(0)
+  const revRef = useRef(0)
+  const eRef = useRef(E)
+  eRef.current = E
+  const saving = useRef<Promise<unknown> | null>(null)
   const pickMedia = usePickMedia()
+  const canPublish = can('article.publish')
+  const secOf = (id: string) => sections.find((s) => s.id === id)
+  const auOf = (id: string | null) => authors.find((a) => a.id === id)?.name ?? 'Sin firma'
 
   /** Aplica un cambio de contenido: marca la nota como modificada y dispara el autoguardado. */
   const change = useCallback(
     (patch: Partial<Editor> | ((e: Editor) => Partial<Editor>)) => {
-      setE((x) => x && { ...x, ...(typeof patch === 'function' ? patch(x) : patch), dirty: true, status: 'Guardando…' })
-      setRev((r) => r + 1)
+      setE((x) => x && { ...x, ...(typeof patch === 'function' ? patch(x) : patch), dirty: true, status: 'Cambios sin guardar…' })
+      revRef.current++
+      setRev(revRef.current)
     },
     [setE],
   )
   /** Cambio de interfaz (pestaña, vista) que no ensucia la nota. */
   const ui = (patch: Partial<Editor>) => setE((x) => x && { ...x, ...patch })
 
-  const snap = useCallback(
-    (manual: boolean) =>
-      setE((x) => {
-        if (!x) return x
-        const at = new Date()
-        const j = JSON.stringify({ t: x.title, l: x.lead, b: x.blocks, tg: x.tags })
-        let vers = x.vers
-        if (!vers.length || vers[0].j !== j) vers = [{ at, j, m: manual }, ...vers]
-        return {
-          ...x,
-          vers: vers.slice(0, 6),
-          status: 'Guardado automáticamente a las ' + at.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
-        }
-      }),
-    [setE],
+  /** Guarda en la base de datos. Devuelve el id de la nota o null si no se pudo. */
+  const persist = useCallback(
+    async (manual: boolean): Promise<string | null> => {
+      if (saving.current) await saving.current
+      const x = eRef.current
+      if (!x) return null
+      if (!x.id && !x.title.trim() && !x.lead.trim() && !x.blocks.some(hasContent)) return null
+      const sent = revRef.current
+      setE((y) => y && { ...y, status: 'Guardando…' })
+      const p = call(
+        saveArticle({
+          id: x.id,
+          title: x.title,
+          lead: x.lead,
+          sectionId: x.sec,
+          authorId: x.au,
+          tags: x.tags,
+          slug: x.slug,
+          seo: x.seo,
+          blocks: x.blocks,
+          com: x.com,
+          news: x.news,
+          flash: x.flash,
+          manual,
+        }),
+      )
+      saving.current = p
+      const r = await p
+      saving.current = null
+      if (!r) {
+        setE((y) => y && { ...y, status: 'No se pudo guardar. Se reintentará con el próximo cambio.' })
+        return null
+      }
+      setE(
+        (y) =>
+          y && {
+            ...y,
+            id: r.id,
+            slug: r.slug,
+            dirty: revRef.current !== sent,
+            status: 'Guardado a las ' + hm(r.savedAt),
+            vers: r.version ? [r.version, ...y.vers] : y.vers,
+          },
+      )
+      setNews((ns) => (ns.some((n) => n.id === r.id) ? ns.map((n) => (n.id === r.id ? r.news : n)) : [r.news, ...ns]))
+      return r.id
+    },
+    [call, setE, setNews],
   )
 
-  // Autoguardado 900 ms después del último cambio
+  // Autoguardado 1,2 s después del último cambio
   useEffect(() => {
     if (!rev) return
-    const t = setTimeout(() => snap(false), 900)
+    const t = setTimeout(() => persist(false), 1200)
     return () => clearTimeout(t)
-  }, [rev, snap])
+  }, [rev, persist])
 
-  const saveNow = useCallback(() => {
-    snap(true)
-    toast('Borrador guardado')
-  }, [snap, toast])
+  // Versiones guardadas de una nota existente
+  useEffect(() => {
+    if (!E.id || E.vers.length) return
+    call(listVersions(E.id)).then((v) => v && setE((y) => y && { ...y, vers: v }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [E.id])
+
+  const saveNow = useCallback(async () => {
+    if (await persist(true)) toast('Borrador guardado')
+    else if (!eRef.current?.id) toast('Escribe algo antes de guardar')
+  }, [persist, toast])
 
   // Ctrl/Cmd+S guarda
   useEffect(() => {
@@ -203,7 +252,7 @@ function EditorInner() {
               title={LBL[k]}
               desc={BH[k]}
               onClick={() => {
-                const nb = mk(k, k === 'p' || k === 'sub' || k === 'sum' ? { v: '' } : {})
+                const nb = mk(k)
                 setBlocks((b) => {
                   if (replace) b[at] = nb
                   else b.splice(at, 0, nb)
@@ -254,38 +303,37 @@ function EditorInner() {
     dialog(
       <>
         <DlgTitle>Versiones de esta nota</DlgTitle>
-        <p className="text-sm text-eg-muted">Se guardan solas mientras escribes. Restaura cualquiera sin perder la actual.</p>
+        <p className="text-sm text-eg-muted">Se guardan solas mientras escribes. Al restaurar una, la actual queda guardada como versión.</p>
         {E.vers.length ? (
           <QL className="mt-2">
-            {E.vers.map((v, i) => {
-              const d = JSON.parse(v.j)
-              return (
-                <li key={i}>
-                  <I n="clock" />
-                  <div>
-                    <b>
-                      {v.at.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      {v.m ? ' · manual' : ''}
-                    </b>
-                    <div className={sub}>
-                      {(d.t || 'Sin titular').slice(0, 60)} · {d.b.length} bloques
-                    </div>
+            {E.vers.slice(0, 20).map((v) => (
+              <li key={v.id}>
+                <I n="clock" />
+                <div>
+                  <b>
+                    {fd(v.at)}
+                    {v.manual ? ' · manual' : ''}
+                  </b>
+                  <div className={sub}>
+                    {(v.title || 'Sin titular').slice(0, 60)} · {v.blocks} bloques
                   </div>
-                  <B
-                    v="out"
-                    sm
-                    className="ml-auto"
-                    onClick={() => {
-                      change({ title: d.t, lead: d.l, blocks: d.b, tags: d.tg })
-                      closeDialog()
-                      toast('Versión restaurada')
-                    }}
-                  >
-                    Restaurar
-                  </B>
-                </li>
-              )
-            })}
+                </div>
+                <B
+                  v="out"
+                  sm
+                  className="ml-auto"
+                  onClick={async () => {
+                    closeDialog()
+                    const d = await call(getVersion(v.id))
+                    if (!d) return
+                    change({ title: d.title, lead: d.lead, blocks: d.blocks, tags: d.tags })
+                    toast('Versión restaurada')
+                  }}
+                >
+                  Restaurar
+                </B>
+              </li>
+            ))}
           </QL>
         ) : (
           <Empty title="Aún no hay versiones">Empieza a escribir y se guardarán solas.</Empty>
@@ -299,8 +347,11 @@ function EditorInner() {
     )
 
   /* publicar */
+  const actionLabel =
+    E.mode === 'now' ? (E.est === 'pub' ? 'Actualizar nota' : 'Publicar ahora') : E.mode === 'sch' ? 'Programar' : E.mode === 'rev' ? 'Enviar a revisión' : 'Guardar borrador'
+
   const publish = () => {
-    if (!E.title.trim()) {
+    if (E.mode !== 'draft' && !E.title.trim()) {
       toast('Escribe un titular antes de continuar')
       titleRef.current?.focus()
       return
@@ -313,16 +364,16 @@ function EditorInner() {
       ui({ tab: 'pb' })
       return
     }
-    const ttl = E.mode === 'now' ? 'Publicar ahora' : sch ? 'Programar la nota' : 'Guardar como borrador'
+    const ttl = E.mode === 'now' ? (E.est === 'pub' ? 'Actualizar la nota publicada' : 'Publicar ahora') : sch ? 'Programar la nota' : E.mode === 'rev' ? 'Enviar a revisión' : 'Guardar como borrador'
     dialog(
       <>
         <DlgTitle>{ttl}</DlgTitle>
         <p className="mb-2.5 text-sm">
-          <b>{E.title}</b>
+          <b>{E.title || 'Sin titular'}</b>
           <br />
           <span className={sub}>
-            {E.sec} · {E.au}
-            {sch ? ' · saldrá el ' + fd(E.when) : ''}
+            {secOf(E.sec)?.name} · {auOf(E.au)}
+            {sch ? ' · saldrá el ' + fd(wh) : ''}
           </span>
         </p>
         <div className={`${cp} rounded-xl bg-eg-soft`}>
@@ -351,46 +402,36 @@ function EditorInner() {
       </>,
     )
 
-    function confirm() {
+    async function confirm() {
       closeDialog()
-      const st: Status = E.mode === 'now' ? 'pub' : sch ? 'sch' : 'draft'
-      const L = layout(E)
-      const art = L.hero?.src && isArt(L.hero.src) ? L.hero.src : 'skyline'
-      const id = E.id || Date.now() % 100000
-      const prev = news.find((n) => n.id === id)
-      const row = { id, t: E.title, sec: E.sec, au: E.au, st, d: st === 'draft' ? null : st === 'pub' ? new Date() : wh, r: prev?.r ?? 0, art }
-      setNews((ns) => (prev ? ns.map((n) => (n.id === id ? row : n)) : [row, ...ns]))
-      setE((x) => x && { ...x, id, dirty: false, est: st })
-      snap(true)
-      toast(st === 'pub' ? 'Nota publicada en El Global' : st === 'sch' ? 'Nota programada para el ' + fd(wh) : 'Borrador guardado')
-      if (st !== 'draft')
+      const id = await persist(true)
+      if (!id) return
+      const mode = E.mode === 'now' ? 'pub' : E.mode
+      const row = await call(setArticleStatus({ id, mode, when: sch ? wh.toISOString() : null }))
+      if (!row) return
+      setNews((ns) => ns.map((n) => (n.id === row.id ? row : n)))
+      setE((x) => x && { ...x, est: row.st, dirty: false })
+      const st = row.st
+      toast(
+        st === 'pub' ? 'Nota publicada en El Global' : st === 'sch' ? 'Nota programada para el ' + fd(wh) : st === 'rev' ? 'Nota enviada a revisión' : 'Borrador guardado',
+      )
+      const url = `/${row.secSlug}/${row.slug}`
+      if (st === 'pub' || st === 'sch')
         dialog(
           <>
             <DlgTitle>{st === 'pub' ? 'Tu nota ya está en línea' : 'Tu nota quedó programada'}</DlgTitle>
             <p className="text-sm text-eg-muted">
               {st === 'pub'
-                ? 'Aparece en la sección ' + E.sec + ' y en las notas recientes.'
+                ? `Aparece en la sección ${row.sec} y en la portada. El sitio se actualiza en unos segundos.`
                 : 'Saldrá sola el ' + fd(wh) + '. Puedes cambiarla desde el calendario editorial.'}
             </p>
             <DlgRow>
-              <B
-                v="out"
-                onClick={() => {
-                  try {
-                    navigator.clipboard
-                      .writeText('https://elglobal.com/' + E.sec.toLowerCase() + '/' + (E.slug || 'nota'))
-                      .then(
-                        () => toast('Enlace copiado'),
-                        () => toast('No se pudo copiar'),
-                      )
-                  } catch {
-                    toast('No se pudo copiar')
-                  }
-                }}
-              >
-                <I n="copy" />
-                Copiar enlace
-              </B>
+              {st === 'pub' && (
+                <a href={url} target="_blank" rel="noopener" className={btnClass({ v: 'out' })}>
+                  <I n="eye" />
+                  Ver en el sitio
+                </a>
+              )}
               <B
                 v="out"
                 onClick={() => {
@@ -420,9 +461,11 @@ function EditorInner() {
     <>
       <div className="grid grid-cols-[minmax(0,1fr)_440px] items-start gap-5 pb-[90px] max-[1180px]:grid-cols-1">
         <div className="mx-auto w-full max-w-[760px]">
-          <div className="mb-1.5 flex items-center gap-2">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <Badge k={E.est === 'draft' ? '' : E.est}>{ST[E.est]}</Badge>
-            <span className={sub}>{E.status}</span>
+            <span className={sub} aria-live="polite">
+              {E.status}
+            </span>
           </div>
           <AutoTA
             taRef={titleRef}
@@ -477,8 +520,8 @@ function EditorInner() {
               ]}
             />
             <div className={cn(cp, 'max-h-[calc(100vh-150px)] overflow-auto max-[1180px]:max-h-none')}>
-              {E.tab === 'pv' && <PreviewPanel E={E} ui={ui} />}
-              {E.tab === 'pb' && <PublishPanel E={E} change={change} />}
+              {E.tab === 'pv' && <PreviewPanel E={E} ui={ui} secName={secOf(E.sec)?.name ?? ''} auName={auOf(E.au)} />}
+              {E.tab === 'pb' && <PublishPanel E={E} change={change} canPublish={canPublish} />}
               {E.tab === 'ql' && (
                 <QualityPanel
                   E={E}
@@ -507,19 +550,19 @@ function EditorInner() {
       </div>
 
       <div className="fixed right-0 bottom-0 left-[15.5rem] z-30 flex items-center gap-2.5 border-t border-eg-rule bg-eg-panel/94 px-6 py-2.5 backdrop-blur-[10px] max-[900px]:left-0 max-[900px]:px-3 max-[900px]:py-2">
-        <span className={cn(sub, 'max-[900px]:hidden')}>{E.vers.length ? E.status : ''}</span>
+        <span className={cn(sub, 'max-[900px]:hidden')}>{E.status}</span>
         <span className="flex-1" />
-        <B v="out" onClick={versions} aria-label="Versiones">
+        <B v="out" onClick={versions} aria-label="Versiones" disabled={!E.id}>
           <I n="undo" />
           <span className="max-[560px]:hidden">Versiones</span>
         </B>
         <B v="out" onClick={saveNow} aria-label="Guardar borrador">
           <I n="check" />
-          <span className="max-[560px]:hidden">Guardar borrador</span>
+          <span className="max-[560px]:hidden">Guardar</span>
         </B>
         <B v="acc" onClick={publish}>
           <I n="up2" />
-          {E.mode === 'now' ? 'Publicar ahora' : E.mode === 'sch' ? 'Programar' : 'Guardar borrador'}
+          {actionLabel}
         </B>
       </div>
     </>
@@ -541,7 +584,7 @@ function Blocks({
   setBlock: (i: number, p: Partial<Block>) => void
   setBlocks: (fn: (b: Block[]) => Block[]) => void
   picker: (at: number, replace: boolean) => void
-  pickMedia: (cb: (m: { s: string; a: string }) => void) => void
+  pickMedia: (cb: (m: { id: string; s: string; a: string }) => void) => void
   onDelete: () => void
   onGen: (i: number) => void
 }) {
@@ -714,7 +757,7 @@ function Blocks({
                         <B
                           v="out"
                           sm
-                          onClick={() => pickMedia((m) => setBlock(i, { src: m.s, alt: b.alt || m.a }))}
+                          onClick={() => pickMedia((m) => setBlock(i, { mediaId: m.id, src: m.s, alt: b.alt || m.a }))}
                         >
                           <I n="image" />
                           {b.src ? 'Cambiar imagen' : 'Elegir imagen'}
@@ -809,14 +852,14 @@ function Blocks({
 
 /* ---------- panel: vista previa ---------- */
 
-function Preview({ E }: { E: Editor }) {
+function Preview({ E, secName, auName }: { E: Editor; secName: string; auName: string }) {
   const L = layout(E)
   const mob = E.view === 'mob'
   let pi = 0
   const head = (
     <>
       <span className={cn('font-sans text-[11px] font-semibold', mob && L.hero ? 'text-[#ffb3ad]' : 'text-[#b3261e]')}>
-        {E.sec.toUpperCase()}
+        {secName.toUpperCase()}
       </span>
       <h2
         className={cn(
@@ -835,7 +878,7 @@ function Preview({ E }: { E: Editor }) {
   )
   const by = (
     <div className="mb-3 border-y border-[#ddd5c7] py-2 font-sans text-xs text-[#5b6470]">
-      Por {E.au} · {readTime(E)} min de lectura
+      Por {auName} · {readTime(E)} min de lectura
     </div>
   )
   const fig = (b: Block) => (
@@ -938,7 +981,7 @@ function Preview({ E }: { E: Editor }) {
   )
 }
 
-function PreviewPanel({ E, ui }: { E: Editor; ui: (p: Partial<Editor>) => void }) {
+function PreviewPanel({ E, ui, secName, auName }: { E: Editor; ui: (p: Partial<Editor>) => void; secName: string; auName: string }) {
   const f = layout(E).flags
   const F: [keyof typeof f, string][] = [
     ['hero', 'Primera imagen como portada'],
@@ -974,10 +1017,10 @@ function PreviewPanel({ E, ui }: { E: Editor; ui: (p: Partial<Editor>) => void }
       </div>
       {E.view === 'mob' ? (
         <div className="mx-auto max-h-[640px] w-[304px] max-w-full overflow-hidden overflow-y-auto rounded-[34px] border-[9px] border-[#14202b] bg-[#fffdf9]">
-          <Preview E={E} />
+          <Preview E={E} secName={secName} auName={auName} />
         </div>
       ) : (
-        <Preview E={E} />
+        <Preview E={E} secName={secName} auName={auName} />
       )}
     </>
   )
@@ -985,7 +1028,17 @@ function PreviewPanel({ E, ui }: { E: Editor; ui: (p: Partial<Editor>) => void }
 
 /* ---------- panel: publicar ---------- */
 
-function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | ((e: Editor) => Partial<Editor>)) => void }) {
+function PublishPanel({
+  E,
+  change,
+  canPublish,
+}: {
+  E: Editor
+  change: (p: Partial<Editor> | ((e: Editor) => Partial<Editor>)) => void
+  canPublish: boolean
+}) {
+  const { sections, authors } = useAdmin()
+  const secSlug = sections.find((s) => s.id === E.sec)?.slug ?? '…'
   const [tag, setTag] = useState('')
   const sat = (() => {
     const x = D(0, 9, 0)
@@ -1009,11 +1062,18 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
             label="Momento de publicación"
             value={E.mode}
             onChange={(m) => change({ mode: m })}
-            options={[
-              ['now', 'Publicar ahora'],
-              ['sch', 'Programar'],
-              ['draft', 'Borrador'],
-            ]}
+            options={
+              canPublish
+                ? [
+                    ['now', E.est === 'pub' ? 'Publicada' : 'Publicar ahora'],
+                    ['sch', 'Programar'],
+                    ['draft', E.est === 'pub' || E.est === 'sch' ? 'Retirar (borrador)' : 'Borrador'],
+                  ]
+                : [
+                    ['draft', 'Borrador'],
+                    ['rev', 'Enviar a revisión'],
+                  ]
+            }
           />
         </div>
       </div>
@@ -1036,7 +1096,7 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
             ))}
           </div>
           <div className={cn(hint, 'mt-1.5 flex gap-1')}>
-            <I n="spark" /> Tus lectores abren más entre 7:00 y 8:00 y entre 18:00 y 19:00 (datos de ejemplo).
+            <I n="spark" /> Se publica sola a esa hora (hora de este equipo).
           </div>
         </div>
       )}
@@ -1046,8 +1106,10 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
             Sección
           </label>
           <select className={inp} id="sc" value={E.sec} onChange={(e) => change({ sec: e.target.value })}>
-            {SECS.map((s) => (
-              <option key={s}>{s}</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
             ))}
           </select>
         </div>
@@ -1055,9 +1117,12 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
           <label htmlFor="au" className={lab}>
             Autor
           </label>
-          <select className={inp} id="au" value={E.au} onChange={(e) => change({ au: e.target.value })}>
-            {AUTH.map((s) => (
-              <option key={s}>{s}</option>
+          <select className={inp} id="au" value={E.au ?? ''} onChange={(e) => change({ au: e.target.value || null })}>
+            <option value="">Sin firma</option>
+            {authors.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
             ))}
           </select>
         </div>
@@ -1107,7 +1172,7 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
         </label>
         <input className={inp} id="slug" value={E.slug} onChange={(e) => change({ slug: slugify(e.target.value), slugEd: true })} />
         <div className={cn(hint, 'break-all')}>
-          elglobal.com/{E.sec.toLowerCase()}/{E.slug || '…'}
+          elglobal.com/{secSlug}/{E.slug || '…'}
         </div>
       </div>
       <div className={fieldCls}>
@@ -1123,7 +1188,7 @@ function PublishPanel({ E, change }: { E: Editor; change: (p: Partial<Editor> | 
           </B>
         </div>
         <Card className="mt-1.5 px-3 py-2.5">
-          <div className="text-xs text-eg-muted">elglobal.com › {E.sec.toLowerCase()}</div>
+          <div className="text-xs text-eg-muted">elglobal.com › {secSlug}</div>
           <div className="font-serif text-[17px] font-medium text-eg-info">{(E.title || 'Titular de la nota').slice(0, 65)}</div>
           <div className="text-xs text-eg-muted">{(E.seo || E.lead || 'La descripción aparecerá aquí.').slice(0, 160)}</div>
         </Card>

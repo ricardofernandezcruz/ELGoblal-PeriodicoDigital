@@ -255,9 +255,13 @@
   color: #b3261e;
 }
 
-/* Modo lectura del artículo */
-.eg-focus .eg-dim {
+/* Modo lectura del artículo: atenúa todo menos el texto */
+.eg-focus .eg-dim,
+body.eg-focus > header,
+body.eg-focus header.sticky,
+body.eg-focus footer {
   opacity: 0.15;
+  transition: opacity 0.2s;
 }
 
 /* "Sin animación" de la página Detalles */

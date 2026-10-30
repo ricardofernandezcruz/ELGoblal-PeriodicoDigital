@@ -1,50 +1,53 @@
 'use client'
 
 import { useState } from 'react'
+import { updateMediaAlt } from '@/app/redaccion/actions'
 import { ArtImg } from '@/components/eg/art'
-import type { MediaItem } from '../data'
+import type { AdminMedia } from '../data'
 import { useAdmin } from '../store'
-import { B, Badge, Card, cp, DlgRow, DlgTitle, hint, I, inp, pageTitle, sub } from '../ui'
+import { B, Badge, Card, cp, DlgRow, DlgTitle, Empty, hint, I, inp, pageTitle, sub } from '../ui'
 
-/** Abre el selector de archivos y devuelve la imagen como data URL (máx. 3 MB). */
+/** Abre el selector de archivos, sube la imagen al servidor y la añade a la biblioteca. */
 export function useUpload() {
   const { setMedia, toast } = useAdmin()
-  return (cb: (m: MediaItem) => void) => {
+  return (cb: (m: AdminMedia) => void, onBusy?: (b: boolean) => void) => {
     const i = document.createElement('input')
     i.type = 'file'
-    i.accept = 'image/*'
-    i.onchange = () => {
+    i.accept = 'image/jpeg,image/png,image/webp,image/gif'
+    i.onchange = async () => {
       const f = i.files?.[0]
       if (!f) return
       if (f.size > 3e6) return toast('La imagen pesa más de 3 MB. Reduce su tamaño antes de subirla.')
-      const r = new FileReader()
-      r.onload = () => {
-        const m = { s: String(r.result), n: f.name.replace(/[.][^.]+$/, ''), a: '' }
-        setMedia((ms) => [m, ...ms])
-        cb(m)
+      onBusy?.(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', f)
+        const res = await fetch('/api/media', { method: 'POST', body: fd })
+        const j = await res.json()
+        if (!res.ok) return toast(j.error ?? 'No se pudo subir la imagen.')
+        setMedia((ms) => [j as AdminMedia, ...ms])
+        cb(j as AdminMedia)
+      } catch {
+        toast('Sin conexión con el servidor. Inténtalo de nuevo.')
+      } finally {
+        onBusy?.(false)
       }
-      r.readAsDataURL(f)
     }
     i.click()
   }
 }
 
-export function MediaGrid({ items, onPick }: { items: MediaItem[]; onPick: (m: MediaItem) => void }) {
+export function MediaGrid({ items, onPick }: { items: AdminMedia[]; onPick: (m: AdminMedia) => void }) {
+  if (!items.length) return <Empty title="La biblioteca está vacía">Sube la primera imagen con el botón de arriba.</Empty>
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-      {items.map((m, i) => (
-        <button
-          key={m.s.slice(0, 40) + i}
-          type="button"
-          onClick={() => onPick(m)}
-          className="overflow-hidden rounded-[10px] border border-eg-rule bg-eg-panel p-0 text-left"
-        >
+      {items.map((m) => (
+        <button key={m.id} type="button" onClick={() => onPick(m)} className="overflow-hidden rounded-[10px] border border-eg-rule bg-eg-panel p-0 text-left">
           <div className="aspect-[16/10] w-full overflow-hidden bg-eg-soft">
             <ArtImg src={m.s} />
           </div>
           <span className="block px-2.5 py-2 text-xs">
-            <b>{m.n}</b>
-            <br />
+            <b className="line-clamp-1">{m.n}</b>
             {m.a ? <span className={sub}>Con texto alternativo</span> : <Badge k="er" className="mt-0.5">Falta texto alternativo</Badge>}
           </span>
         </button>
@@ -53,27 +56,29 @@ export function MediaGrid({ items, onPick }: { items: MediaItem[]; onPick: (m: M
   )
 }
 
-function PickDialog({ pick }: { pick: (m: MediaItem) => void }) {
+function PickDialog({ pick }: { pick: (m: AdminMedia) => void }) {
   const { media, closeDialog, toast } = useAdmin()
   const upload = useUpload()
+  const [busy, setBusy] = useState(false)
   return (
     <>
       <DlgTitle>Elegir imagen</DlgTitle>
-      <p className="text-sm text-eg-muted">Sube una foto tuya o usa la biblioteca de ilustraciones.</p>
+      <p className="text-sm text-eg-muted">Sube una foto o elige una de la biblioteca.</p>
       <div className="my-3 flex flex-wrap gap-2">
         <B
+          disabled={busy}
           onClick={() =>
             upload((m) => {
               closeDialog()
               pick(m)
-              toast('Imagen subida')
-            })
+              toast('Imagen subida. Escribe su texto alternativo.')
+            }, setBusy)
           }
         >
           <I n="up2" />
-          Subir una imagen
+          {busy ? 'Subiendo…' : 'Subir una imagen'}
         </B>
-        <span className={`${sub} self-center`}>JPG, PNG o WebP, hasta 3 MB</span>
+        <span className={`${sub} self-center`}>JPG, PNG, WebP o GIF, hasta 3 MB</span>
       </div>
       <MediaGrid
         items={media}
@@ -93,14 +98,22 @@ function PickDialog({ pick }: { pick: (m: MediaItem) => void }) {
 
 export function usePickMedia() {
   const { dialog } = useAdmin()
-  return (pick: (m: MediaItem) => void) => dialog(<PickDialog pick={pick} />, true)
+  return (pick: (m: AdminMedia) => void) => dialog(<PickDialog pick={pick} />, true)
 }
 
-function AltDialog({ m, onSave }: { m: MediaItem; onSave: (a: string) => void }) {
-  const { closeDialog } = useAdmin()
+function AltDialog({ m }: { m: AdminMedia }) {
+  const { closeDialog, setMedia, call, toast } = useAdmin()
   const [a, setA] = useState(m.a)
   return (
-    <>
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if ((await call(updateMediaAlt(m.id, a))) === undefined) return
+        setMedia((ms) => ms.map((x) => (x.id === m.id ? { ...x, a: a.trim() } : x)))
+        closeDialog()
+        toast('Texto alternativo guardado')
+      }}
+    >
       <DlgTitle>{m.n}</DlgTitle>
       <div className="my-2.5 aspect-video w-full overflow-hidden rounded-[5px] bg-eg-soft">
         <ArtImg src={m.s} />
@@ -109,28 +122,23 @@ function AltDialog({ m, onSave }: { m: MediaItem; onSave: (a: string) => void })
         <label htmlFor="ma" className="text-[13px] font-semibold">
           Texto alternativo
         </label>
-        <input
-          id="ma"
-          className={inp}
-          value={a}
-          onChange={(e) => setA(e.target.value)}
-          placeholder="Describe lo que se ve, para quien no puede verlo"
-        />
+        <input id="ma" className={inp} value={a} onChange={(e) => setA(e.target.value)} placeholder="Describe lo que se ve, para quien no puede verlo" />
         <span className={hint}>Mejora la accesibilidad y el posicionamiento en buscadores.</span>
       </div>
       <DlgRow>
         <B v="out" onClick={closeDialog}>
           Cerrar
         </B>
-        <B onClick={() => onSave(a)}>Guardar</B>
+        <B type="submit">Guardar texto alternativo</B>
       </DlgRow>
-    </>
+    </form>
   )
 }
 
 export function MediaView() {
-  const { media, setMedia, dialog, closeDialog, toast } = useAdmin()
+  const { media, dialog, toast } = useAdmin()
   const upload = useUpload()
+  const [busy, setBusy] = useState(false)
   return (
     <>
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -139,27 +147,13 @@ export function MediaView() {
           <div className="text-sm text-eg-muted">Toda tu biblioteca en un solo lugar. Cada imagen debe tener texto alternativo.</div>
         </div>
         <span className="flex-1" />
-        <B onClick={() => upload(() => toast('Imagen subida. Añade su texto alternativo.'))}>
+        <B disabled={busy} onClick={() => upload((m) => (toast('Imagen subida. Añade su texto alternativo.'), dialog(<AltDialog m={m} />)), setBusy)}>
           <I n="up2" />
-          Subir imagen
+          {busy ? 'Subiendo…' : 'Subir imagen'}
         </B>
       </div>
       <Card className={cp}>
-        <MediaGrid
-          items={media}
-          onPick={(m) =>
-            dialog(
-              <AltDialog
-                m={m}
-                onSave={(a) => {
-                  setMedia((ms) => ms.map((x) => (x === m ? { ...x, a } : x)))
-                  closeDialog()
-                  toast('Texto alternativo guardado')
-                }}
-              />,
-            )
-          }
-        />
+        <MediaGrid items={media} onPick={(m) => dialog(<AltDialog m={m} />)} />
       </Card>
     </>
   )

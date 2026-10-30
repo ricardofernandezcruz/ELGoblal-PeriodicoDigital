@@ -2,34 +2,38 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { search } from '@/app/actions'
 import { Icon } from '@/components/eg/icon'
 import { toggleTheme } from '@/components/eg/theme'
 import { useToast } from '@/components/eg/toast'
-import { MEGA, SEARCH_DATA, SECTIONS } from '@/lib/portada-data'
+import type { Card } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 const iconBtn = 'grid size-10 place-items-center rounded border border-transparent bg-transparent hover:border-eg-rule'
 
-export function BreakingBar() {
+export type MenuItem = { name: string; slug: string }
+
+export function BreakingBar({ text }: { text: string }) {
+  const key = 'eg-breaking:' + text
   const [open, setOpen] = useState(true)
   useEffect(() => {
     try {
-      if (sessionStorage.getItem('eg-breaking') === '0') setOpen(false)
+      if (sessionStorage.getItem(key) === '0') setOpen(false)
     } catch {}
-  }, [])
-  if (!open) return null
+  }, [key])
+  if (!open || !text) return null
   return (
     <div className="bg-eg-accent text-sm text-white">
       <div className="mx-auto flex max-w-[1240px] items-center gap-3 px-5 py-2">
-        <b className="font-semibold">Última hora</b>
-        <span>Cumbre global: las grandes potencias acuerdan una hoja de ruta de diálogo.</span>
+        <b className="font-semibold whitespace-nowrap">Última hora</b>
+        <span>{text}</span>
         <button
           aria-label="Cerrar aviso"
           className="ml-auto border-0 bg-transparent px-1.5 text-xl leading-none text-white"
           onClick={() => {
             setOpen(false)
             try {
-              sessionStorage.setItem('eg-breaking', '0')
+              sessionStorage.setItem(key, '0')
             } catch {}
           }}
         >
@@ -41,11 +45,15 @@ export function BreakingBar() {
 }
 
 export function SiteHeader({
+  menu,
+  active,
   megaOpen,
   setMegaOpen,
   onSearch,
   searchBtnRef,
 }: {
+  menu: MenuItem[]
+  active: string
   megaOpen: boolean
   setMegaOpen: (o: boolean) => void
   onSearch: () => void
@@ -88,15 +96,13 @@ export function SiteHeader({
     return () => removeEventListener('resize', fit)
   }, [])
 
+  const nav = [{ name: 'Portada', slug: '' }, ...menu]
+  const half = Math.ceil(menu.length / 2)
+
   return (
     <header className="sticky top-0 z-20 border-b border-eg-rule bg-eg-bg">
       <div className="mx-auto max-w-[1240px] px-5">
-        <div
-          className={cn(
-            'flex items-center justify-between transition-[height] duration-200',
-            small ? 'h-14' : 'h-[108px] max-[900px]:h-[84px]',
-          )}
-        >
+        <div className={cn('flex items-center justify-between transition-[height] duration-200', small ? 'h-14' : 'h-[108px] max-[900px]:h-[84px]')}>
           <button
             className="flex h-10 items-center gap-2 border-0 bg-transparent px-2 text-sm font-semibold"
             aria-expanded={megaOpen}
@@ -134,51 +140,66 @@ export function SiteHeader({
             <button ref={searchBtnRef} className={iconBtn} aria-label="Buscar (atajo /)" onClick={onSearch}>
               <Icon name="search" size={20} strokeWidth={1.8} round={false} />
             </button>
-            <button
-              className={iconBtn}
-              aria-label="Cambiar tema"
-              onClick={() => toast(toggleTheme() === 'dark' ? 'Modo oscuro' : 'Modo claro')}
-            >
+            <button className={iconBtn} aria-label="Cambiar tema" onClick={() => toast(toggleTheme() === 'dark' ? 'Modo oscuro' : 'Modo claro')}>
               <Icon name="moon" size={20} strokeWidth={1.8} round={false} />
             </button>
-            <button
+            <a
+              href="#t-news"
               className="rounded border-0 bg-eg-ink px-4 py-2.5 text-sm font-semibold text-eg-bg hover:opacity-[.88] max-[900px]:hidden"
-              onClick={() => toast('Suscripción: aquí iría el flujo de pago')}
             >
               Suscribirse
-            </button>
+            </a>
           </div>
         </div>
 
         <nav className="scrollbar-none flex gap-1 overflow-x-auto border-t border-eg-rule" aria-label="Secciones">
-          {SECTIONS.map((s, i) => (
-            <a
-              key={s}
-              href="#"
-              aria-current={i === 0 ? 'page' : undefined}
+          {nav.map((s) => (
+            <Link
+              key={s.slug}
+              href={'/' + s.slug}
+              aria-current={s.slug === active ? 'page' : undefined}
               className="border-b-2 border-transparent px-3.5 py-3 text-sm font-medium whitespace-nowrap text-eg-muted hover:text-eg-ink aria-[current=page]:border-eg-accent aria-[current=page]:text-eg-ink"
             >
-              {s}
-            </a>
+              {s.name}
+            </Link>
           ))}
         </nav>
       </div>
 
-      <div
-        id="mega"
-        className={cn('absolute top-full right-0 left-0 border-b border-eg-rule bg-eg-bg pt-7 pb-9', megaOpen ? 'block' : 'hidden')}
-      >
-        <div className="mx-auto grid max-w-[1240px] grid-cols-4 gap-6 px-5 max-[900px]:grid-cols-1">
-          {MEGA.map((col) => (
-            <div key={col.title}>
-              <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">{col.title}</h4>
-              {col.links.map((l) => (
-                <a key={l} href="#" className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
-                  {l}
-                </a>
+      <div id="mega" className={cn('absolute top-full right-0 left-0 border-b border-eg-rule bg-eg-bg pt-7 pb-9', megaOpen ? 'block' : 'hidden')}>
+        <div className="mx-auto grid max-w-[1240px] grid-cols-4 gap-6 px-5 max-[900px]:grid-cols-2">
+          {[menu.slice(0, half), menu.slice(half)].map((col, i) => (
+            <div key={i}>
+              <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">{i === 0 ? 'Secciones' : ' '}</h4>
+              {col.map((l) => (
+                <Link
+                  key={l.slug}
+                  href={'/' + l.slug}
+                  onClick={() => setMegaOpen(false)}
+                  className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent"
+                >
+                  {l.name}
+                </Link>
               ))}
             </div>
           ))}
+          <div>
+            <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">El Global</h4>
+            {[
+              ['Portada', '/'],
+              ['Boletín diario', '/#t-news'],
+            ].map(([l, h]) => (
+              <Link key={h} href={h} onClick={() => setMegaOpen(false)} className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
+                {l}
+              </Link>
+            ))}
+          </div>
+          <div>
+            <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">Redacción</h4>
+            <Link href="/redaccion" className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
+              Entrar al panel
+            </Link>
+          </div>
         </div>
       </div>
     </header>
@@ -187,16 +208,26 @@ export function SiteHeader({
 
 export function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [q, setQ] = useState('')
+  const [res, setRes] = useState<Card[] | null>(null)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (open) {
       setQ('')
+      setRes(null)
       input.current?.focus()
     }
   }, [open])
+  // Busca 250 ms después de la última tecla
+  useEffect(() => {
+    if (q.trim().length < 2) return setRes(null)
+    let live = true
+    const t = setTimeout(() => search(q).then((r) => live && setRes(r)), 250)
+    return () => {
+      live = false
+      clearTimeout(t)
+    }
+  }, [q])
   if (!open) return null
-  const v = q.toLowerCase().trim()
-  const res = SEARCH_DATA.filter((d) => !v || (d[0] + d[1]).toLowerCase().includes(v))
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(10,16,23,.55)] pt-[12vh]"
@@ -215,16 +246,19 @@ export function SearchPalette({ open, onClose }: { open: boolean; onClose: () =>
           autoComplete="off"
           className="w-full border-0 border-b border-eg-rule bg-transparent px-5 py-[18px] font-serif text-xl text-eg-ink outline-0"
         />
-        <ul className="m-0 max-h-[50vh] list-none overflow-auto p-2">
-          {res.length ? (
-            res.map(([t, s]) => (
-              <li key={t}>
+        <ul className="m-0 max-h-[50vh] list-none overflow-auto p-2" aria-live="polite">
+          {res === null ? (
+            <li className="p-3.5 text-sm text-eg-muted">Escribe al menos dos letras.</li>
+          ) : res.length ? (
+            res.map((c) => (
+              <li key={c.id}>
                 <Link
-                  href="/articulo"
+                  href={c.href}
+                  onClick={onClose}
                   className="flex justify-between gap-3 rounded px-3 py-2.5 font-serif text-[17px] font-medium hover:bg-eg-surface focus:bg-eg-surface"
                 >
-                  {t}
-                  <small className="font-sans text-xs text-eg-muted">{s}</small>
+                  {c.title}
+                  <small className="font-sans text-xs whitespace-nowrap text-eg-muted">{c.sec}</small>
                 </Link>
               </li>
             ))

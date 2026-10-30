@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
+import { bulkSetStatus, deleteArticles, duplicateArticle } from '@/app/redaccion/actions'
 import { fd, num, type Status } from '../data'
 import { useAdmin } from '../store'
 import { B, Card, chk, cp, DlgRow, DlgTitle, Empty, I, inp, Seg, StatusBadge, sub, Tabs, Tbl, Thumb } from '../ui'
@@ -44,14 +45,14 @@ export function NewsView() {
 }
 
 function List({ q }: { q: string }) {
-  const { news, setNews, openEd, toast, dialog, closeDialog } = useAdmin()
+  const { news, setNews, openEd, toast, dialog, closeDialog, call, can } = useAdmin()
   const [tab, setTab] = useState<Tab>('all')
-  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [sel, setSel] = useState<Set<string>>(new Set())
   const cnt = (s: Tab) => (s === 'all' ? news.length : news.filter((n) => n.st === s).length)
   const l = news.filter(
     (n) => (tab === 'all' || n.st === tab) && (!q || (n.t + n.au + n.sec).toLowerCase().includes(q.toLowerCase())),
   )
-  const toggle = (id: number, on: boolean) => {
+  const toggle = (id: string, on: boolean) => {
     const s = new Set(sel)
     if (on) s.add(id)
     else s.delete(id)
@@ -63,18 +64,20 @@ function List({ q }: { q: string }) {
       dialog(
         <>
           <DlgTitle>Eliminar {sel.size} notas</DlgTitle>
-          <p className="text-sm text-eg-muted">Se moverán a la papelera durante 30 días. Podrás restaurarlas.</p>
+          <p className="text-sm text-eg-muted">Se borran de forma definitiva, junto con sus versiones y comentarios. No se puede deshacer.</p>
           <DlgRow>
             <B v="out" onClick={closeDialog}>
               Cancelar
             </B>
             <B
               v="acc"
-              onClick={() => {
-                setNews((ns) => ns.filter((n) => !sel.has(n.id)))
-                setSel(new Set())
+              onClick={async () => {
                 closeDialog()
-                toast('Notas movidas a la papelera')
+                const gone = await call(deleteArticles([...sel]))
+                if (!gone) return
+                setNews((ns) => ns.filter((n) => !gone.includes(n.id)))
+                setSel(new Set())
+                toast(gone.length === 1 ? 'Nota eliminada' : `${gone.length} notas eliminadas`)
               }}
             >
               Eliminar {sel.size} notas
@@ -84,9 +87,13 @@ function List({ q }: { q: string }) {
       )
       return
     }
-    setNews((ns) => ns.map((n) => (sel.has(n.id) ? { ...n, st: k, d: k === 'pub' ? new Date() : n.d } : n)))
-    setSel(new Set())
-    toast('Estado actualizado')
+    call(bulkSetStatus([...sel], k)).then((rows) => {
+      if (!rows) return
+      const m = new Map(rows.map((r) => [r.id, r]))
+      setNews((ns) => ns.map((n) => m.get(n.id) ?? n))
+      setSel(new Set())
+      toast('Estado actualizado')
+    })
   }
 
   return (
@@ -112,12 +119,16 @@ function List({ q }: { q: string }) {
       {sel.size > 0 && (
         <div className={`${cp} flex flex-wrap items-center gap-2 bg-eg-soft`}>
           <b>{sel.size} seleccionadas</b>
-          <B v="out" sm onClick={() => bulk('pub')}>
-            Publicar
-          </B>
-          <B v="out" sm onClick={() => bulk('draft')}>
-            Pasar a borrador
-          </B>
+          {can('article.publish') && (
+            <>
+              <B v="out" sm onClick={() => bulk('pub')}>
+                Publicar
+              </B>
+              <B v="out" sm onClick={() => bulk('draft')}>
+                Pasar a borrador
+              </B>
+            </>
+          )}
           <B v="out" sm onClick={() => bulk('del')}>
             Eliminar
           </B>
@@ -164,9 +175,7 @@ function List({ q }: { q: string }) {
                   </td>
                   <td>
                     <div className="flex min-w-[280px] items-center gap-3">
-                      <Thumb>
-                        <ArtImg src={n.art} />
-                      </Thumb>
+                      <Thumb>{n.art && <ArtImg src={n.art} />}</Thumb>
                       <a
                         href="#"
                         className="font-semibold"
@@ -175,7 +184,7 @@ function List({ q }: { q: string }) {
                           openEd(n.id)
                         }}
                       >
-                        {n.t}
+                        {n.t || 'Sin titular'}
                       </a>
                     </div>
                   </td>
@@ -195,8 +204,10 @@ function List({ q }: { q: string }) {
                       ic
                       sm
                       aria-label="Duplicar nota"
-                      onClick={() => {
-                        setNews((ns) => [{ ...n, id: Date.now() % 100000, t: n.t + ' (copia)', st: 'draft', d: null, r: 0 }, ...ns])
+                      onClick={async () => {
+                        const row = await call(duplicateArticle(n.id))
+                        if (!row) return
+                        setNews((ns) => [row, ...ns])
                         toast('Nota duplicada como borrador')
                       }}
                     >

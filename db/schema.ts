@@ -71,7 +71,7 @@ export const articleStatus = pgEnum('article_status', ['draft', 'review', 'sched
 export type ArticleBlock =
   | { id: string; t: 'p'; v: string }
   | { id: string; t: 'sub'; v: string }
-  | { id: string; t: 'img'; mediaId: string | null; alt: string; cap?: string }
+  | { id: string; t: 'img'; mediaId: string | null; src: string; alt: string; cap?: string }
   | { id: string; t: 'quote'; v: string; who?: string }
   | { id: string; t: 'video'; u: string; vert: boolean; cap?: string }
   | { id: string; t: 'data'; n: string; l: string }

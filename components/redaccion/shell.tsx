@@ -6,10 +6,12 @@ import { Icon, type IconName } from '@/components/eg/icon'
 import { toggleTheme } from '@/components/eg/theme'
 import { authClient } from '@/lib/auth-client'
 import { ROLE_LABEL } from '@/lib/permissions'
+import type { AdminData } from '@/lib/newsroom-types'
 import type { CurrentUser } from '@/lib/session'
 import { cn } from '@/lib/utils'
 import { VIEWS, type View } from './data'
 import { AdminProvider, useAdmin } from './store'
+import { AccountDialog } from './views/account'
 import { B, btnClass, Overlay } from './ui'
 import { Comments } from './views/comments'
 import { Dashboard } from './views/dashboard'
@@ -20,9 +22,9 @@ import { NewsView } from './views/news'
 import { Stats } from './views/stats'
 import { Team } from './views/team'
 
-export default function Redaccion({ user }: { user: CurrentUser }) {
+export default function Redaccion({ user, initial }: { user: CurrentUser; initial: AdminData }) {
   return (
-    <AdminProvider me={user}>
+    <AdminProvider me={user} initial={initial}>
       <Shell />
     </AdminProvider>
   )
@@ -49,7 +51,7 @@ function NavBtn({ v, icon, children, count }: { v: View; icon: IconName; childre
 }
 
 function Shell() {
-  const { me, view, news, com, sbOpen, setSbOpen, setPal, newNote, toast } = useAdmin()
+  const { me, view, news, com, sbOpen, setSbOpen, setPal, newNote, toast, dialog, can } = useAdmin()
   const rev = news.filter((n) => n.st === 'rev').length
 
   useEffect(() => {
@@ -96,7 +98,7 @@ function Shell() {
           <NavBtn v="media" icon="image">
             Multimedia
           </NavBtn>
-          <NavBtn v="com" icon="chat" count={com.length}>
+          <NavBtn v="com" icon="chat" count={can('comment.moderate') ? com.length : 0}>
             Comentarios
           </NavBtn>
           <h6 className={h6}>Sitio</h6>
@@ -113,10 +115,18 @@ function Shell() {
             <div className="size-9 overflow-hidden rounded-full">
               <ArtImg src="av1" />
             </div>
-            <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              className="min-w-0 flex-1 rounded-md border-0 bg-transparent p-0 text-left hover:opacity-80"
+              aria-label="Mi cuenta"
+              onClick={() => dialog(<AccountDialog />)}
+            >
               <b className="block truncate text-[13px] text-white">{me.name}</b>
-              <span className="text-xs text-[#8a98ab]">{ROLE_LABEL[me.role]}</span>
-            </div>
+              <span className="text-xs text-[#8a98ab]">
+                {ROLE_LABEL[me.role]}
+                {!me.twoFactorEnabled && ' · activa 2FA'}
+              </span>
+            </button>
             <button
               type="button"
               className="rounded-md border-0 bg-transparent px-2 py-1 text-xs text-[#8a98ab] hover:bg-white/8 hover:text-white"
@@ -221,7 +231,7 @@ function Palette() {
     if (k === 'theme') toggleTheme()
     else if (k === 'new') newNote()
     else if (k.startsWith('v:')) go(k.slice(2) as View)
-    else openEd(+k.slice(2))
+    else openEd(k.slice(2))
   }
 
   return (

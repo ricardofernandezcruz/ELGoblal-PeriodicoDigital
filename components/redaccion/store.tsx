@@ -1,24 +1,23 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { loadArticle } from '@/app/redaccion/actions'
 import { Icon } from '@/components/eg/icon'
+import type { ActionResult, AdminAuthor, AdminData, AdminHome, AdminStats } from '@/lib/newsroom-types'
+import { can, type Permission } from '@/lib/permissions'
 import type { CurrentUser } from '@/lib/session'
 import {
   D,
   emptyEditor,
-  initialComments,
-  initialHome,
-  initialMedia,
-  initialNews,
   loc,
   mk,
-  slugify,
   TEMPLATES,
-  type Comment,
+  type AdminComment,
+  type AdminMedia,
+  type AdminNews,
+  type AdminSection,
+  type AdminUser,
   type Editor,
-  type HomeState,
-  type MediaItem,
-  type News,
   type View,
 } from './data'
 import { B, Dialog, DlgRow, DlgTitle } from './ui'
@@ -26,24 +25,33 @@ import { B, Dialog, DlgRow, DlgTitle } from './ui'
 type Setter<T> = React.Dispatch<React.SetStateAction<T>>
 type Ctx = {
   me: CurrentUser
+  can: (p: Permission) => boolean
   view: View
   show: (v: View) => void
   go: (v: View) => void
-  news: News[]
-  setNews: Setter<News[]>
-  media: MediaItem[]
-  setMedia: Setter<MediaItem[]>
-  com: Comment[]
-  setCom: Setter<Comment[]>
-  hp: HomeState
-  setHp: Setter<HomeState>
+  news: AdminNews[]
+  setNews: Setter<AdminNews[]>
+  media: AdminMedia[]
+  setMedia: Setter<AdminMedia[]>
+  com: AdminComment[]
+  setCom: Setter<AdminComment[]>
+  sections: AdminSection[]
+  setSections: Setter<AdminSection[]>
+  authors: AdminAuthor[]
+  team: AdminUser[]
+  setTeam: Setter<AdminUser[]>
+  home: AdminHome
+  setHome: Setter<AdminHome>
+  stats: AdminStats
   E: Editor | null
   setE: Setter<Editor | null>
   dialog: (node: React.ReactNode, wide?: boolean) => void
   closeDialog: () => void
   toast: (m: string) => void
+  /** Ejecuta una acción del servidor y muestra su error, si lo hay. */
+  call: <T>(p: Promise<ActionResult<T>>) => Promise<T | undefined>
   newNote: (date?: Date) => void
-  openEd: (id: number) => void
+  openEd: (id: string) => void
   sbOpen: boolean
   setSbOpen: Setter<boolean>
   pal: boolean
@@ -53,12 +61,14 @@ type Ctx = {
 const AdminContext = createContext<Ctx | null>(null)
 export const useAdmin = () => useContext(AdminContext)!
 
-export function AdminProvider({ me, children }: { me: CurrentUser; children: React.ReactNode }) {
+export function AdminProvider({ me, initial, children }: { me: CurrentUser; initial: AdminData; children: React.ReactNode }) {
   const [view, setView] = useState<View>('dash')
-  const [news, setNews] = useState(initialNews)
-  const [media, setMedia] = useState(initialMedia)
-  const [com, setCom] = useState(initialComments)
-  const [hp, setHp] = useState(initialHome)
+  const [news, setNews] = useState(initial.news)
+  const [media, setMedia] = useState(initial.media)
+  const [com, setCom] = useState(initial.comments)
+  const [sections, setSections] = useState(initial.sections)
+  const [team, setTeam] = useState(initial.team)
+  const [home, setHome] = useState(initial.home)
   const [E, setE] = useState<Editor | null>(null)
   const [dlg, setDlg] = useState<{ node: React.ReactNode; wide?: boolean } | null>(null)
   const [toasts, setToasts] = useState<{ id: number; m: string }[]>([])
@@ -72,8 +82,21 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
   const toast = useCallback((m: string) => {
     const id = Date.now() + Math.random()
     setToasts((t) => [...t, { id, m }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000)
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
   }, [])
+  const call = useCallback(
+    async <T,>(p: Promise<ActionResult<T>>) => {
+      try {
+        const r = await p
+        if (r.ok) return r.data
+        toast(r.error)
+      } catch {
+        toast('Sin conexión con el servidor. Revisa tu red y vuelve a intentarlo.')
+      }
+      return undefined
+    },
+    [toast],
+  )
   const dialog = useCallback((node: React.ReactNode, wide?: boolean) => setDlg({ node, wide }), [])
   const closeDialog = useCallback(() => setDlg(null), [])
 
@@ -90,7 +113,8 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
           <>
             <DlgTitle>Tienes cambios sin guardar</DlgTitle>
             <p className="text-sm text-eg-muted">
-              Se guardan solos como borrador, pero aún no los has publicado ni programado. ¿Salir del editor?
+              Los últimos cambios todavía se están guardando. Si sales ahora, podrías perder lo que escribiste en los
+              últimos segundos.
             </p>
             <DlgRow>
               <B v="out" onClick={closeDialog}>
@@ -103,7 +127,7 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
                   show(v)
                 }}
               >
-                Salir y mantener borrador
+                Salir de todos modos
               </B>
             </DlgRow>
           </>,
@@ -114,6 +138,8 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
     },
     [dialog, closeDialog, show],
   )
+
+  const defaultSection = sections[0]?.id ?? ''
 
   const startEd = useCallback(
     (e: Editor) => {
@@ -129,8 +155,12 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
         closeDialog()
         startEd(
           emptyEditor({
-            ...(date ? { mode: 'sch', when: loc(date) } : {}),
-            blocks: t ? TEMPLATES[t]() : [mk('p', { v: '' })],
+            sec: defaultSection,
+            au: initial.authors.find((a) => a.name === me.name)?.id ?? null,
+            createdBy: me.id,
+            mode: can(me.role, 'article.publish') ? (date ? 'sch' : 'now') : 'draft',
+            when: loc(date ?? D(1, 7, 30)),
+            blocks: t ? TEMPLATES[t]() : [mk('p')],
           }),
         )
       }
@@ -162,32 +192,38 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
         </>,
       )
     },
-    [dialog, closeDialog, startEd],
+    [dialog, closeDialog, startEd, defaultSection, initial.authors, me],
   )
 
   const openEd = useCallback(
-    (id: number) => {
-      const n = news.find((x) => x.id === id)
-      if (!n) return
-      const blocks = TEMPLATES.std()
-      blocks[0].src = n.art
+    async (id: string) => {
+      const p = await call(loadArticle(id))
+      if (!p) return
+      const mode = p.status === 'pub' ? 'now' : p.status === 'sch' ? 'sch' : p.status === 'rev' ? 'rev' : 'draft'
       startEd(
         emptyEditor({
-          id,
-          title: n.t,
-          sec: n.sec,
-          au: n.au,
-          mode: n.st === 'sch' ? 'sch' : n.st === 'pub' ? 'now' : 'draft',
-          est: n.st === 'sch' ? 'sch' : 'draft',
-          when: n.d ? loc(n.d) : loc(D(1, 7, 30)),
-          tags: ['actualidad', 'análisis'],
-          lead: 'Las grandes potencias abren una etapa de diálogo para afrontar los desafíos que definirán la próxima década.',
-          blocks,
-          slug: slugify(n.t),
+          id: p.id,
+          title: p.title,
+          lead: p.lead,
+          sec: p.sectionId,
+          au: p.authorId,
+          tags: p.tags,
+          slug: p.slug,
+          slugEd: true,
+          seo: p.seo,
+          blocks: p.blocks,
+          com: p.com,
+          news: p.news,
+          flash: p.flash,
+          mode: !can(me.role, 'article.publish') && (mode === 'now' || mode === 'sch') ? 'draft' : mode,
+          est: p.status,
+          when: loc(p.when ?? D(1, 7, 30)),
+          createdBy: p.createdBy,
+          status: 'Sin cambios',
         }),
       )
     },
-    [news, startEd],
+    [call, startEd, me.role],
   )
 
   // Esc cierra diálogos y paleta
@@ -206,6 +242,7 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
     <AdminContext.Provider
       value={{
         me,
+        can: (p) => can(me.role, p),
         view,
         show,
         go,
@@ -215,13 +252,20 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
         setMedia,
         com,
         setCom,
-        hp,
-        setHp,
+        sections,
+        setSections,
+        authors: initial.authors,
+        team,
+        setTeam,
+        home,
+        setHome,
+        stats: initial.stats,
         E,
         setE,
         dialog,
         closeDialog,
         toast,
+        call,
         newNote,
         openEd,
         sbOpen,
@@ -236,7 +280,7 @@ export function AdminProvider({ me, children }: { me: CurrentUser; children: Rea
           {dlg.node}
         </Dialog>
       )}
-      <div className="fixed right-4 bottom-4 z-[100] grid gap-2" role="status">
+      <div className="fixed right-4 bottom-4 z-[100] grid max-w-[min(420px,calc(100vw-32px))] gap-2" role="status">
         {toasts.map((t) => (
           <div
             key={t.id}

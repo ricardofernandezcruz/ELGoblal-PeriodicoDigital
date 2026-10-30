@@ -1,7 +1,7 @@
 import 'server-only'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import type { Role } from '@/db/auth-schema'
+import type { Role } from '@/lib/roles'
 import { auth } from './auth'
 import { can, type Permission } from './permissions'
 

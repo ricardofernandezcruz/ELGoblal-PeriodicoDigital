@@ -7,7 +7,7 @@ import { OutlineBtn } from '@/components/eg/proto-header'
 import { ToastProvider } from '@/components/eg/toast'
 import { ContenidoHeader } from '@/components/contenido/contenido-header'
 import { box, btn,  h2, meta, secH, sub } from '@/components/contenido/styles'
-import { Timeline } from '@/components/portada/portada'
+import { Timeline } from '@/components/eg/timeline'
 import { nowHM } from '@/lib/portada-data'
 import { cn } from '@/lib/utils'
 

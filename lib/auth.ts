@@ -6,10 +6,18 @@ import { twoFactor } from 'better-auth/plugins'
 import { db } from '@/db'
 import * as schema from '@/db/auth-schema'
 
+// En Vercel: dominio de producción, URL de la rama y URL de cada despliegue de prueba.
+const https = (h?: string) => (h ? `https://${h}` : undefined)
+const prod = https(process.env.VERCEL_PROJECT_PRODUCTION_URL)
+const preview = https(process.env.VERCEL_BRANCH_URL) ?? https(process.env.VERCEL_URL)
+const vercelOrigins = [prod, https(process.env.VERCEL_BRANCH_URL), https(process.env.VERCEL_URL)].filter((o): o is string => !!o)
+
 export const auth = betterAuth({
   appName: 'El Global',
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  // Sin BETTER_AUTH_URL se usa la URL de Vercel: la de producción o la del despliegue de prueba.
+  baseURL: process.env.BETTER_AUTH_URL ?? (process.env.VERCEL_ENV === 'production' ? prod : preview),
+  trustedOrigins: vercelOrigins,
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema: {

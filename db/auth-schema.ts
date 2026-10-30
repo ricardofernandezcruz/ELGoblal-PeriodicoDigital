@@ -2,8 +2,9 @@
    Si se actualiza Better Auth, comprobar que el esquema siga coincidiendo. */
 import { bigint, boolean, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
-export const ROLES = ['collaborator', 'writer', 'editor', 'admin'] as const
-export type Role = (typeof ROLES)[number]
+import { ROLES } from '../lib/roles'
+
+export { ROLES, type Role } from '../lib/roles'
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
