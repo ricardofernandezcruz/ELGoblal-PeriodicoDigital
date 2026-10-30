@@ -38,3 +38,12 @@ export async function putObject(key: string, body: ArrayBuffer, type: string): P
   await writeFile(file, Buffer.from(body))
   return `/uploads/${key}`
 }
+
+/** Enlace firmado (1 h) para que el navegador suba un archivo grande directamente a R2.
+    Sin R2 (solo en desarrollo) devuelve null y la subida se hace a /api/video-upload. */
+export async function presignUpload(key: string): Promise<{ uploadUrl: string; publicUrl: string } | null> {
+  const s = r2()
+  if (!s) return null
+  const signed = await s.client.sign(new Request(`${s.endpoint}/${key}?X-Amz-Expires=3600`, { method: 'PUT' }), { aws: { signQuery: true } })
+  return { uploadUrl: signed.url, publicUrl: `${s.publicUrl}/${key}` }
+}

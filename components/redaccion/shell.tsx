@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArtImg } from '@/components/eg/art'
 import { Icon, type IconName } from '@/components/eg/icon'
 import { toggleTheme } from '@/components/eg/theme'
 import { authClient } from '@/lib/auth-client'
@@ -12,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { VIEWS, type View } from './data'
 import { AdminProvider, useAdmin } from './store'
 import { AccountDialog } from './views/account'
+import { Avatar } from './views/profile'
 import { B, btnClass, Overlay } from './ui'
 import { Comments } from './views/comments'
 import { Dashboard } from './views/dashboard'
@@ -21,6 +21,7 @@ import { MediaView } from './views/media'
 import { NewsView } from './views/news'
 import { Stats } from './views/stats'
 import { Team } from './views/team'
+import { VideosView } from './views/videos'
 
 export default function Redaccion({ user, initial }: { user: CurrentUser; initial: AdminData }) {
   return (
@@ -95,6 +96,9 @@ function Shell() {
           <NavBtn v="news" icon="file" count={rev}>
             Noticias
           </NavBtn>
+          <NavBtn v="videos" icon="video">
+            Videos
+          </NavBtn>
           <NavBtn v="media" icon="image">
             Multimedia
           </NavBtn>
@@ -112,9 +116,7 @@ function Shell() {
             Equipo
           </NavBtn>
           <div className="mt-auto flex items-center gap-2.5 border-t border-white/10 p-2.5">
-            <div className="size-9 overflow-hidden rounded-full">
-              <ArtImg src="av1" />
-            </div>
+            <Avatar name={me.name} image={me.image} className="bg-white/10 text-white" />
             <button
               type="button"
               className="min-w-0 flex-1 rounded-md border-0 bg-transparent p-0 text-left hover:opacity-80"
@@ -182,6 +184,7 @@ function Shell() {
             {view === 'news' && <NewsView />}
             {view === 'edit' && <EditorView />}
             {view === 'home' && <HomeView />}
+            {view === 'videos' && <VideosView />}
             {view === 'media' && <MediaView />}
             {view === 'com' && <Comments />}
             {view === 'stats' && <Stats />}
@@ -198,6 +201,7 @@ const ACT: [string, string, string][] = [
   ['Panel', 'v:dash', 'ir'],
   ['Noticias', 'v:news', 'ir'],
   ['Portada', 'v:home', 'ir'],
+  ['Videos', 'v:videos', 'ir'],
   ['Multimedia', 'v:media', 'ir'],
   ['Comentarios', 'v:com', 'ir'],
   ['Analítica', 'v:stats', 'ir'],

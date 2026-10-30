@@ -1,11 +1,11 @@
 /* Utilidades y tipos del panel de redacción (los datos vienen de la base de datos). */
 import type { AdminVersion, Block, BlockType, Status } from '@/lib/newsroom-types'
 
-export type { AdminComment, AdminMedia, AdminNews, AdminSection, AdminUser, Block, BlockType, Status } from '@/lib/newsroom-types'
+export type { AdminChannel, AdminComment, AdminMedia, AdminNews, AdminSection, AdminUser, AdminVideo, Block, BlockType, Status } from '@/lib/newsroom-types'
 
 /** 'rev' = enviar a revisión (para quien no puede publicar). */
 export type Mode = 'now' | 'sch' | 'draft' | 'rev'
-export type View = 'dash' | 'news' | 'edit' | 'home' | 'media' | 'com' | 'stats' | 'team'
+export type View = 'dash' | 'news' | 'edit' | 'videos' | 'home' | 'media' | 'com' | 'stats' | 'team'
 
 export type Editor = {
   id: string | null
@@ -62,6 +62,7 @@ export const VIEWS: Record<View, [string, string]> = {
   dash: ['Contenido', 'Panel'],
   news: ['Contenido', 'Noticias'],
   edit: ['Contenido', 'Editor de notas'],
+  videos: ['Contenido', 'Videos'],
   media: ['Contenido', 'Multimedia'],
   com: ['Contenido', 'Comentarios'],
   home: ['Sitio', 'Portada'],

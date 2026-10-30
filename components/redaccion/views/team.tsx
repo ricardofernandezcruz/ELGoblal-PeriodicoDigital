@@ -6,6 +6,7 @@ import { ROLES, type Role } from '@/lib/roles'
 import { MATRIX, PERMISSION_LABEL, PERMISSIONS, ROLE_LABEL } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../store'
+import { Avatar, UserDialog } from './profile'
 import { B, Badge, Card, cp, DlgRow, DlgTitle, h3, hint, I, inp, pageTitle, sub, Tbl } from '../ui'
 
 function Invite() {
@@ -154,7 +155,7 @@ export function Team() {
                 {team.map((m) => (
                   <tr key={m.id}>
                     <td className="w-12">
-                      <div className="grid size-9 place-items-center rounded-full bg-eg-soft font-semibold text-eg-muted">{m.name.slice(0, 1).toUpperCase()}</div>
+                      <Avatar name={m.name} image={m.image} />
                     </td>
                     <td>
                       <b>{m.name}</b>
@@ -182,6 +183,13 @@ export function Team() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="w-12">
+                      {(allowed || m.id === me.id) && (
+                        <B v="ghost" ic sm aria-label={'Editar a ' + m.name} title="Editar perfil y acceso" onClick={() => dialog(<UserDialog id={m.id} />)}>
+                          <I n="type" />
+                        </B>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
+import { PasswordInput } from '@/components/eg/password-input'
 import { authClient } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 
@@ -97,9 +98,8 @@ function LoginForm() {
             <label htmlFor="password" className={lab}>
               Contraseña
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               className={inp}
               autoComplete="current-password"
               value={password}

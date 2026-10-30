@@ -5,13 +5,13 @@ import type { Role } from '@/lib/roles'
 import { auth } from './auth'
 import { can, type Permission } from './permissions'
 
-export type CurrentUser = { id: string; name: string; email: string; role: Role; twoFactorEnabled: boolean }
+export type CurrentUser = { id: string; name: string; email: string; role: Role; twoFactorEnabled: boolean; image: string | null }
 
 export async function getUser(): Promise<CurrentUser | null> {
   const s = await auth.api.getSession({ headers: await headers() })
   if (!s) return null
   const u = s.user as typeof s.user & { role?: Role; twoFactorEnabled?: boolean | null }
-  return { id: u.id, name: u.name, email: u.email, role: u.role ?? 'collaborator', twoFactorEnabled: !!u.twoFactorEnabled }
+  return { id: u.id, name: u.name, email: u.email, role: u.role ?? 'collaborator', twoFactorEnabled: !!u.twoFactorEnabled, image: u.image ?? null }
 }
 
 /** Para páginas: sin sesión, al login. */

@@ -4,7 +4,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/db'
-import { articles, comments, subscribers } from '@/db/schema'
+import { articles, comments, subscribers, videos } from '@/db/schema'
 import { searchCards, type Card } from '@/lib/queries'
 
 type Result = { ok: true; message: string } | { ok: false; error: string }
@@ -62,4 +62,11 @@ export async function registerRead(articleId: string): Promise<void> {
 export async function search(q: string): Promise<Card[]> {
   const t = q.trim().slice(0, 80)
   return t.length < 2 ? [] : searchCards(t)
+}
+
+/** Cuenta una reproducción de un video de la redacción (una por video y sesión). */
+export async function registerVideoView(videoId: string): Promise<void> {
+  const id = z.uuid().safeParse(videoId)
+  if (!id.success) return
+  await db.update(videos).set({ views: sql`${videos.views} + 1` }).where(eq(videos.id, id.data))
 }

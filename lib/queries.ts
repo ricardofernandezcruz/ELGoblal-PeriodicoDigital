@@ -1,5 +1,6 @@
 import 'server-only'
 import { and, asc, desc, eq, ilike, ne, notInArray, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/db'
 import { articles, authors, comments, media, sections, type ArticleBlock } from '@/db/schema'
 import { getHome } from './newsroom'
@@ -99,6 +100,8 @@ export async function getSectionPage(slug: string) {
   return { section: { name: sec.name, slug: sec.slug }, cards: list.map(toCard), menu: await getMenu() }
 }
 
+const avatar = alias(media, 'avatar')
+
 export type FullArticle = {
   id: string
   title: string
@@ -106,6 +109,8 @@ export type FullArticle = {
   sec: string
   secSlug: string
   au: string | null
+  auImg: string | null
+  auBio: string | null
   date: string
   blocks: ArticleBlock[]
   tags: string[]
@@ -124,6 +129,8 @@ export async function getArticle(secSlug: string, slug: string) {
       secSlug: sections.slug,
       sectionId: sections.id,
       au: authors.name,
+      auImg: avatar.key,
+      auBio: authors.bio,
       date: liveDate,
       blocks: articles.blocks,
       tags: articles.tags,
@@ -136,6 +143,7 @@ export async function getArticle(secSlug: string, slug: string) {
     .innerJoin(sections, eq(articles.sectionId, sections.id))
     .leftJoin(authors, eq(articles.authorId, authors.id))
     .leftJoin(media, eq(articles.heroId, media.id))
+    .leftJoin(avatar, eq(authors.avatarId, avatar.id))
     .where(and(isLive(), eq(sections.slug, secSlug), eq(articles.slug, slug)))
   if (!a) return null
 
@@ -166,6 +174,8 @@ export async function getArticle(secSlug: string, slug: string) {
     sec: a.sec,
     secSlug: a.secSlug,
     au: a.au,
+    auImg: a.auImg,
+    auBio: a.auBio,
     date: new Date(a.date).toISOString(),
     blocks: a.blocks,
     tags: a.tags,

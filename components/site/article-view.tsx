@@ -252,8 +252,8 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
         <h1 className="mt-2.5 mb-3.5 font-serif text-[clamp(34px,5vw,52px)] leading-[1.08] font-medium tracking-[-.02em] break-words">{a.title}</h1>
         {a.lead && <p className="mb-5 font-serif text-[22px] leading-[1.45] text-eg-muted max-[600px]:text-[19px]">{a.lead}</p>}
         <div className="flex items-center gap-3 border-y border-eg-rule py-3.5 text-sm text-eg-muted">
-          <div className="grid size-[42px] flex-none place-items-center rounded-full bg-eg-surface font-serif text-lg text-eg-ink">
-            {(a.au ?? 'E').slice(0, 1)}
+          <div className="grid size-[42px] flex-none place-items-center overflow-hidden rounded-full bg-eg-surface font-serif text-lg text-eg-ink">
+            {a.auImg ? <ArtImg src={a.auImg} alt="" /> : (a.au ?? 'E').slice(0, 1)}
           </div>
           <div>
             <b className="block text-eg-ink">{a.au ?? 'Redacción'}</b>
@@ -282,6 +282,18 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
                 #{t}
               </span>
             ))}
+          </div>
+        )}
+
+        {a.au && a.auBio && (
+          <div className="mt-8 flex items-start gap-3.5 rounded border border-eg-rule bg-eg-card p-4">
+            <div className="grid size-12 flex-none place-items-center overflow-hidden rounded-full bg-eg-surface font-serif text-lg">
+              {a.auImg ? <ArtImg src={a.auImg} alt="" /> : a.au.slice(0, 1)}
+            </div>
+            <div>
+              <b className="block text-[15px]">{a.au}</b>
+              <p className="m-0 text-sm text-eg-muted">{a.auBio}</p>
+            </div>
           </div>
         )}
 

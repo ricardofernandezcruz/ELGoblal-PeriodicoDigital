@@ -64,9 +64,10 @@ export function SiteHeader({
   const title = useRef<HTMLSpanElement>(null)
   const slogan = useRef<HTMLSpanElement>(null)
 
-  // Header compacto al pasar los 80 px de scroll
+  // Header compacto al bajar. Dos umbrales separados (histéresis): al encogerse, la página sube
+  // unos 60 px; con un solo umbral eso devolvía el scroll por debajo y el header parpadeaba.
   useEffect(() => {
-    const on = () => setSmall(window.scrollY > 80)
+    const on = () => setSmall((s) => (s ? window.scrollY > 20 : window.scrollY > 140))
     on()
     addEventListener('scroll', on, { passive: true })
     return () => removeEventListener('scroll', on)
@@ -96,7 +97,7 @@ export function SiteHeader({
     return () => removeEventListener('resize', fit)
   }, [])
 
-  const nav = [{ name: 'Portada', slug: '' }, ...menu]
+  const nav = [{ name: 'Portada', slug: '' }, ...menu, { name: 'Video', slug: 'video' }]
   const half = Math.ceil(menu.length / 2)
 
   return (
@@ -187,18 +188,13 @@ export function SiteHeader({
             <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">El Global</h4>
             {[
               ['Portada', '/'],
+              ['Video', '/video'],
               ['Boletín diario', '/#t-news'],
             ].map(([l, h]) => (
               <Link key={h} href={h} onClick={() => setMegaOpen(false)} className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
                 {l}
               </Link>
             ))}
-          </div>
-          <div>
-            <h4 className="mb-2.5 text-[13px] font-semibold text-eg-muted">Redacción</h4>
-            <Link href="/redaccion" className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
-              Entrar al panel
-            </Link>
           </div>
         </div>
       </div>

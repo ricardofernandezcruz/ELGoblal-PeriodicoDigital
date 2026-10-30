@@ -8,6 +8,7 @@ import { Chip, Chips } from '@/components/eg/chip'
 import { useToast } from '@/components/eg/toast'
 import { SiteChrome } from '@/components/site/chrome'
 import { TimeAgo } from '@/components/site/time-ago'
+import { VideoBand, type VideoHubData } from '@/components/site/video'
 import type { Card } from '@/lib/queries'
 import { formatTime } from '@/lib/site'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,7 @@ export type FrontPage = {
   mostRead: { hoy: Card[]; sem: Card[] }
   latest: Card[]
   updatedAt: string | null
+  videos: VideoHubData
 }
 
 export function Portada({ data }: { data: FrontPage }) {
@@ -49,14 +51,19 @@ export function Portada({ data }: { data: FrontPage }) {
         ) : (
           <div className="py-24 text-center">
             <h1 className="mb-2 font-serif text-[34px] font-medium">Muy pronto, las primeras noticias</h1>
-            <p className={cn(lead, 'mx-auto max-w-[46ch]')}>Todavía no hay notas publicadas. La redacción las publica desde el panel.</p>
-            <Link href="/redaccion" className={btn}>
-              Ir al panel de redacción
-            </Link>
+            <p className={cn(lead, 'mx-auto max-w-[46ch]')}>
+              Estamos preparando la cobertura. Suscríbete al resumen diario y te avisamos en cuanto publiquemos.
+            </p>
+            <a href="#t-news" className={btn}>
+              Recibir el resumen
+            </a>
           </div>
         )}
-        <Newsletter />
       </main>
+      <VideoBand hub={data.videos} />
+      <div className="mx-auto max-w-[1240px] px-5">
+        <Newsletter />
+      </div>
     </SiteChrome>
   )
 }

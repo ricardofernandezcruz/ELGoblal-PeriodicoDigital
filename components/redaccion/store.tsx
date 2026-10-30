@@ -16,7 +16,9 @@ import {
   type AdminMedia,
   type AdminNews,
   type AdminSection,
+  type AdminChannel,
   type AdminUser,
+  type AdminVideo,
   type Editor,
   type View,
 } from './data'
@@ -42,6 +44,10 @@ type Ctx = {
   setTeam: Setter<AdminUser[]>
   home: AdminHome
   setHome: Setter<AdminHome>
+  videos: AdminVideo[]
+  setVideos: Setter<AdminVideo[]>
+  channels: AdminChannel[]
+  setChannels: Setter<AdminChannel[]>
   stats: AdminStats
   E: Editor | null
   setE: Setter<Editor | null>
@@ -69,6 +75,8 @@ export function AdminProvider({ me, initial, children }: { me: CurrentUser; init
   const [sections, setSections] = useState(initial.sections)
   const [team, setTeam] = useState(initial.team)
   const [home, setHome] = useState(initial.home)
+  const [videos, setVideos] = useState(initial.videos)
+  const [channels, setChannels] = useState(initial.channels)
   const [E, setE] = useState<Editor | null>(null)
   const [dlg, setDlg] = useState<{ node: React.ReactNode; wide?: boolean } | null>(null)
   const [toasts, setToasts] = useState<{ id: number; m: string }[]>([])
@@ -259,6 +267,10 @@ export function AdminProvider({ me, initial, children }: { me: CurrentUser; init
         setTeam,
         home,
         setHome,
+        videos,
+        setVideos,
+        channels,
+        setChannels,
         stats: initial.stats,
         E,
         setE,

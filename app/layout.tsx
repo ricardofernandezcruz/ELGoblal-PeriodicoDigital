@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Newsreader } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 
 const newsreader = Newsreader({
@@ -46,10 +47,10 @@ const themeScript = `try{var t=localStorage.getItem('eg-theme');if(t)document.do
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es" className={`${newsreader.variable} ${inter.variable}`} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body>
+        <Script id="eg-theme" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

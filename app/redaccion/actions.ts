@@ -8,9 +8,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
 import { ROLES } from '@/db/auth-schema'
-import { account, articles, articleVersions, auditLog, authors, comments, media, sections, settings, user, type ArticleBlock } from '@/db/schema'
+import { account, articles, articleVersions, auditLog, authors, comments, media, sections, session, settings, twoFactor, user, type ArticleBlock } from '@/db/schema'
 import { getEditorPayload, getNews, slugify } from '@/lib/newsroom'
-import { DB_STATUS, type ActionResult, type AdminNews, type AdminVersion, type Block, type EditorPayload, type Status } from '@/lib/newsroom-types'
+import { DB_STATUS, type ActionResult, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type Status } from '@/lib/newsroom-types'
 import { can, canEditArticle } from '@/lib/permissions'
 import { ForbiddenError, getUser, requirePermission, type CurrentUser } from '@/lib/session'
 
@@ -351,14 +351,151 @@ export async function saveMenu(items: { id: string; inMenu: boolean }[]): Promis
 
 /* ---------- Equipo ---------- */
 
-export async function setUserRole(userId: string, role: string): Promise<ActionResult<void>> {
+const userId = z.string().min(1).max(64)
+
+/** Contraseña temporal legible (sin caracteres que se confunden), 16 caracteres. */
+function tempPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  const out: string[] = []
+  while (out.length < 16) {
+    const b = crypto.getRandomValues(new Uint8Array(1))[0]
+    if (b < 228) out.push(alphabet[b % alphabet.length]) // 228 = 4 × 57: sin sesgo
+  }
+  return out.join('')
+}
+
+async function adminCount() {
+  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(user).where(eq(user.role, 'admin'))
+  return r.n
+}
+
+async function loadTeamUser(id: string) {
+  const [t] = await db.select().from(user).where(eq(user.id, id))
+  if (!t) throw new UserError('Esa cuenta ya no existe.')
+  return t
+}
+
+/** El propio usuario o alguien con permiso de administrar el equipo. */
+async function requireSelfOrManager(id: string) {
+  const u = await getUser()
+  if (!u) throw new ForbiddenError()
+  if (u.id !== id && !can(u.role, 'team.manage')) throw new ForbiddenError()
+  return u
+}
+
+export async function setUserRole(targetId: string, role: string): Promise<ActionResult<void>> {
   return run(async () => {
     const u = await requirePermission('team.manage')
     const r = z.enum(ROLES).parse(role)
-    const id = z.string().max(64).parse(userId)
+    const id = userId.parse(targetId)
     if (id === u.id && r !== 'admin') throw new UserError('No puedes quitarte a ti mismo el rol de administrador.')
+    const t = await loadTeamUser(id)
+    if (t.role === 'admin' && r !== 'admin' && (await adminCount()) <= 1) throw new UserError('Debe quedar al menos un administrador.')
     await db.update(user).set({ role: r }).where(eq(user.id, id))
     await audit(u, 'user.role', 'user', id, { role: r })
+  })
+}
+
+const profileSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  email: z.email().max(200).optional(),
+  bio: z.string().trim().max(300).default(''),
+})
+
+/** Nombre y biografía (y correo, solo para administradores). Actualiza también la firma pública. */
+export async function updateProfile(targetId: string, input: z.input<typeof profileSchema>): Promise<ActionResult<void>> {
+  return run(async () => {
+    const id = userId.parse(targetId)
+    const u = await requireSelfOrManager(id)
+    const d = profileSchema.parse(input)
+    const patch: Partial<typeof user.$inferInsert> = { name: d.name }
+    if (d.email !== undefined) {
+      if (!can(u.role, 'team.manage')) throw new UserError('Solo un administrador puede cambiar el correo de acceso.')
+      const email = d.email.toLowerCase()
+      const [dup] = await db.select({ id: user.id }).from(user).where(and(eq(user.email, email), ne(user.id, id)))
+      if (dup) throw new UserError('Ya existe otra cuenta con ese correo.')
+      patch.email = email
+    }
+    await db.update(user).set(patch).where(eq(user.id, id))
+    const [byline] = await db.select({ id: authors.id }).from(authors).where(eq(authors.userId, id))
+    if (byline) await db.update(authors).set({ name: d.name, bio: d.bio || null }).where(eq(authors.id, byline.id))
+    else await db.insert(authors).values({ name: d.name, slug: await uniqueAuthorSlug(d.name), bio: d.bio || null, userId: id })
+    await audit(u, 'user.profile', 'user', id, { name: d.name, email: patch.email })
+    refreshSite()
+  })
+}
+
+/** Foto de perfil: se elige de la biblioteca (o se sube antes). null la quita. */
+export async function setUserAvatar(targetId: string, mediaId: string | null): Promise<ActionResult<string | null>> {
+  return run(async () => {
+    const id = userId.parse(targetId)
+    const u = await requireSelfOrManager(id)
+    let url: string | null = null
+    if (mediaId) {
+      const [m] = await db.select().from(media).where(eq(media.id, z.uuid().parse(mediaId)))
+      if (!m) throw new UserError('Esa imagen ya no está en la biblioteca.')
+      url = m.key
+    }
+    await db.update(user).set({ image: url }).where(eq(user.id, id))
+    await db.update(authors).set({ avatarId: mediaId }).where(eq(authors.userId, id))
+    await audit(u, 'user.avatar', 'user', id)
+    refreshSite()
+    return url
+  })
+}
+
+/** Nueva contraseña temporal para otra persona. Cierra todas sus sesiones. */
+export async function resetUserPassword(targetId: string): Promise<ActionResult<string>> {
+  return run(async () => {
+    const u = await requirePermission('team.manage')
+    const id = userId.parse(targetId)
+    if (id === u.id) throw new UserError('Para tu propia cuenta, usa «Mi cuenta» → Contraseña.')
+    await loadTeamUser(id)
+    const password = tempPassword()
+    const hash = await hashPassword(password)
+    const [acc] = await db.select({ id: account.id }).from(account).where(and(eq(account.userId, id), eq(account.providerId, 'credential')))
+    if (acc) await db.update(account).set({ password: hash, updatedAt: new Date() }).where(eq(account.id, acc.id))
+    else await db.insert(account).values({ id: crypto.randomUUID(), accountId: id, providerId: 'credential', userId: id, password: hash, updatedAt: new Date() })
+    await db.delete(session).where(eq(session.userId, id))
+    await audit(u, 'user.resetPassword', 'user', id)
+    return password
+  })
+}
+
+/** Quita la verificación en dos pasos (p. ej. si la persona perdió el teléfono). */
+export async function resetUserTwoFactor(targetId: string): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('team.manage')
+    const id = userId.parse(targetId)
+    await loadTeamUser(id)
+    await db.delete(twoFactor).where(eq(twoFactor.userId, id))
+    await db.update(user).set({ twoFactorEnabled: false }).where(eq(user.id, id))
+    await db.delete(session).where(eq(session.userId, id))
+    await audit(u, 'user.resetTwoFactor', 'user', id)
+  })
+}
+
+/** Cierra todas las sesiones abiertas de una persona. */
+export async function revokeUserSessions(targetId: string): Promise<ActionResult<number>> {
+  return run(async () => {
+    const u = await requirePermission('team.manage')
+    const id = userId.parse(targetId)
+    const gone = await db.delete(session).where(eq(session.userId, id)).returning({ id: session.id })
+    await audit(u, 'user.revokeSessions', 'user', id, { count: gone.length })
+    return gone.length
+  })
+}
+
+/** Elimina la cuenta. Sus notas y su firma se conservan, sin vínculo con la cuenta. */
+export async function deleteTeamUser(targetId: string): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('team.manage')
+    const id = userId.parse(targetId)
+    if (id === u.id) throw new UserError('No puedes eliminar tu propia cuenta.')
+    const t = await loadTeamUser(id)
+    if (t.role === 'admin' && (await adminCount()) <= 1) throw new UserError('Debe quedar al menos un administrador.')
+    await db.delete(user).where(eq(user.id, id))
+    await audit(u, 'user.delete', 'user', id, { email: t.email, name: t.name })
   })
 }
 
@@ -372,28 +509,20 @@ async function uniqueAuthorSlug(name: string) {
 const inviteSchema = z.object({ name: z.string().trim().min(2).max(80), email: z.email().max(200), role: z.enum(ROLES) })
 
 /** Crea la cuenta con una contraseña temporal que se muestra una sola vez al administrador. */
-export async function createTeamUser(
-  input: z.input<typeof inviteSchema>,
-): Promise<ActionResult<{ user: { id: string; name: string; email: string; role: (typeof ROLES)[number]; twoFactor: boolean }; password: string }>> {
+export async function createTeamUser(input: z.input<typeof inviteSchema>): Promise<ActionResult<{ user: AdminUser; password: string }>> {
   return run(async () => {
     const u = await requirePermission('team.manage')
     const d = inviteSchema.parse(input)
     const email = d.email.toLowerCase()
     const [dup] = await db.select({ id: user.id }).from(user).where(eq(user.email, email))
     if (dup) throw new UserError('Ya existe una cuenta con ese correo.')
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-    const bytes = crypto.getRandomValues(new Uint8Array(16))
-    const password = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+    const password = tempPassword()
     const id = crypto.randomUUID()
     await db.insert(user).values({ id, name: d.name, email, role: d.role, emailVerified: true })
     await db.insert(account).values({ id: crypto.randomUUID(), accountId: id, providerId: 'credential', userId: id, password: await hashPassword(password), updatedAt: new Date() })
     // Su firma para las notas
     await db.insert(authors).values({ name: d.name, slug: await uniqueAuthorSlug(d.name), userId: id })
     await audit(u, 'user.create', 'user', id, { email, role: d.role })
-    return { user: { id, name: d.name, email, role: d.role, twoFactor: false }, password }
+    return { user: { id, name: d.name, email, role: d.role, twoFactor: false, image: null, bio: '' }, password }
   })
-}
-
-export async function whoami() {
-  return getUser()
 }

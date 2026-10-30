@@ -197,3 +197,57 @@ export const auditLog = pgTable(
   },
   (t) => [index('audit_log_entity_idx').on(t.entity, t.entityId), index('audit_log_created_idx').on(t.createdAt)],
 )
+
+/* ---------- Video ---------- */
+
+export const videoStatus = pgEnum('video_status', ['draft', 'published'])
+
+/** Videos de la redacción: un archivo propio (R2) o un video de YouTube. Separados de las notas. */
+export const videos = pgTable(
+  'videos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull().unique(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    /** Categoría del área de video (usa las secciones del periódico). */
+    sectionId: uuid('section_id').references(() => sections.id, { onDelete: 'set null' }),
+    authorId: uuid('author_id').references(() => authors.id, { onDelete: 'set null' }),
+    /** URL del archivo subido (mp4/webm) o null si es de YouTube. */
+    fileUrl: text('file_url'),
+    youtubeId: text('youtube_id'),
+    vertical: boolean('vertical').notNull().default(false),
+    /** Imagen de portada; si es de YouTube y no hay, se usa la miniatura de YouTube. */
+    posterId: uuid('poster_id').references(() => media.id, { onDelete: 'set null' }),
+    durationSec: integer('duration_sec'),
+    featured: boolean('featured').notNull().default(false),
+    status: videoStatus('status').notNull().default('draft'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    views: integer('views').notNull().default(0),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    index('videos_status_published_idx').on(t.status, t.publishedAt),
+    check('videos_has_source', sql`${t.fileUrl} IS NOT NULL OR ${t.youtubeId} IS NOT NULL`),
+  ],
+)
+
+/** Canales de YouTube de redactores (p. ej. Deportes, Podcast) que se muestran en el área de video. */
+export const videoChannels = pgTable('video_channels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  /** Etiqueta corta que ve el lector: "Deportes", "Podcast"… */
+  label: text('label').notNull(),
+  /** Nombre del programa o canal. */
+  name: text('name').notNull(),
+  youtubeChannelId: text('youtube_channel_id').notNull(),
+  url: text('url').notNull(),
+  spotifyShowId: text('spotify_show_id'),
+  /** Redactor responsable (su firma). */
+  authorId: uuid('author_id').references(() => authors.id, { onDelete: 'set null' }),
+  position: integer('position').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  createdAt: created(),
+})

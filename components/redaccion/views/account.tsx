@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { PasswordInput } from '@/components/eg/password-input'
 import { authClient } from '@/lib/auth-client'
 import { ROLE_LABEL } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../store'
+import { ProfileForm } from './profile'
 import { B, Badge, DlgRow, DlgTitle, hint, inp, lab, Tabs } from '../ui'
 
 const err = (e: { status?: number; code?: string } | null) =>
@@ -44,13 +46,13 @@ function Password() {
         <label htmlFor="pw-cur" className={lab}>
           Contraseña actual
         </label>
-        <input id="pw-cur" type="password" autoComplete="current-password" className={inp} value={cur} onChange={(e) => (setCur(e.target.value), setMsg(''))} />
+        <PasswordInput id="pw-cur" autoComplete="current-password" className={inp} value={cur} onChange={(e) => (setCur(e.target.value), setMsg(''))} />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="pw-new" className={lab}>
           Nueva contraseña
         </label>
-        <input id="pw-new" type="password" autoComplete="new-password" className={inp} value={next} onChange={(e) => (setNext(e.target.value), setMsg(''))} />
+        <PasswordInput id="pw-new" autoComplete="new-password" className={inp} value={next} onChange={(e) => (setNext(e.target.value), setMsg(''))} />
         <span className={hint}>Mínimo 12 caracteres. Una frase larga es más segura que una palabra con símbolos.</span>
       </div>
       <div role="alert" className="min-h-5 text-[13px] text-eg-accent">
@@ -94,7 +96,7 @@ function TwoFactor() {
           <label htmlFor="tf-pw" className={lab}>
             Contraseña, para desactivarla
           </label>
-          <input id="tf-pw" type="password" className={inp} value={pw} onChange={(e) => (setPw(e.target.value), setMsg(''))} />
+          <PasswordInput id="tf-pw" className={inp} value={pw} onChange={(e) => (setPw(e.target.value), setMsg(''))} />
         </div>
         <div role="alert" className="min-h-5 text-[13px] text-eg-accent">
           {msg}
@@ -129,7 +131,7 @@ function TwoFactor() {
           <label htmlFor="tf-pw" className={lab}>
             Tu contraseña
           </label>
-          <input id="tf-pw" type="password" className={inp} value={pw} onChange={(e) => (setPw(e.target.value), setMsg(''))} />
+          <PasswordInput id="tf-pw" className={inp} value={pw} onChange={(e) => (setPw(e.target.value), setMsg(''))} />
         </div>
         <div role="alert" className="min-h-5 text-[13px] text-eg-accent">
           {msg}
@@ -192,8 +194,9 @@ function TwoFactor() {
 }
 
 export function AccountDialog() {
-  const { me, closeDialog } = useAdmin()
-  const [tab, setTab] = useState<'2fa' | 'pw'>(me.twoFactorEnabled ? 'pw' : '2fa')
+  const { me, team, closeDialog } = useAdmin()
+  const [tab, setTab] = useState<'perfil' | '2fa' | 'pw'>(me.twoFactorEnabled ? 'perfil' : '2fa')
+  const self = team.find((u) => u.id === me.id)
   return (
     <>
       <DlgTitle>Mi cuenta</DlgTitle>
@@ -204,11 +207,12 @@ export function AccountDialog() {
         value={tab}
         onChange={setTab}
         tabs={[
+          ['perfil', 'Perfil'],
           ['2fa', 'Verificación en dos pasos'],
           ['pw', 'Contraseña'],
         ]}
       />
-      {tab === '2fa' ? <TwoFactor /> : <Password />}
+      {tab === 'perfil' ? self && <ProfileForm target={self} /> : tab === '2fa' ? <TwoFactor /> : <Password />}
       <DlgRow>
         <B v="ghost" onClick={closeDialog}>
           Cerrar

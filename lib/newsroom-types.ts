@@ -59,7 +59,7 @@ export type AdminMedia = { id: string; s: string; n: string; a: string }
 export type AdminComment = { id: string; who: string; text: string; on: string; spam: boolean; at: string }
 export type AdminSection = { id: string; name: string; slug: string; inMenu: boolean }
 export type AdminAuthor = { id: string; name: string }
-export type AdminUser = { id: string; name: string; email: string; role: Role; twoFactor: boolean }
+export type AdminUser = { id: string; name: string; email: string; role: Role; twoFactor: boolean; image: string | null; bio: string }
 export type AdminHome = { featured: (string | null)[]; breaking: { on: boolean; text: string } }
 export type AdminStats = { published: number; publishedMonth: number; reads: number; subscribers: number; pending: number }
 
@@ -72,6 +72,39 @@ export type AdminData = {
   team: AdminUser[]
   home: AdminHome
   stats: AdminStats
+  videos: AdminVideo[]
+  channels: AdminChannel[]
 }
 
 export type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: string }
+
+export type AdminVideo = {
+  id: string
+  slug: string
+  title: string
+  description: string
+  sectionId: string | null
+  authorId: string | null
+  fileUrl: string | null
+  youtubeId: string | null
+  vertical: boolean
+  posterId: string | null
+  poster: string | null
+  featured: boolean
+  status: 'draft' | 'published'
+  publishedAt: string | null
+  views: number
+}
+
+export type AdminChannel = {
+  id: string
+  slug: string
+  label: string
+  name: string
+  youtubeChannelId: string
+  url: string
+  spotifyShowId: string | null
+  authorId: string | null
+  position: number
+  active: boolean
+}

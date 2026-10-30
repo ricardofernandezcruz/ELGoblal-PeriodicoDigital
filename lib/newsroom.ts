@@ -1,8 +1,8 @@
 import 'server-only'
 import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { articles, authors, comments, media, sections, settings, subscribers, user, type HomeSettings } from '@/db/schema'
-import type { AdminData, AdminHome, AdminMedia, AdminNews, EditorPayload } from './newsroom-types'
+import { articles, authors, comments, media, sections, settings, subscribers, user, videoChannels, videos, type HomeSettings } from '@/db/schema'
+import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload } from './newsroom-types'
 import { UI_STATUS } from './newsroom-types'
 
 export const DEFAULT_HOME: HomeSettings = { featured: [null, null, null], breaking: { on: false, text: '' } }
@@ -85,6 +85,7 @@ export async function getAdminData(): Promise<AdminData> {
   const monthStart = new Date()
   monthStart.setDate(1)
   monthStart.setHours(0, 0, 0, 0)
+  const [vids, chans] = await Promise.all([getAdminVideos(), getAdminChannels()])
   const [news, med, com, secs, auths, team, home, [pub], [pubMonth], [subs], [reads]] = await Promise.all([
     getNews(),
     db.select().from(media).orderBy(desc(media.createdAt)),
@@ -96,7 +97,7 @@ export async function getAdminData(): Promise<AdminData> {
       .orderBy(desc(comments.createdAt)),
     db.select().from(sections).orderBy(asc(sections.position)),
     db.select({ id: authors.id, name: authors.name }).from(authors).orderBy(asc(authors.name)),
-    db.select().from(user).orderBy(asc(user.name)),
+    db.select({ u: user, bio: authors.bio }).from(user).leftJoin(authors, eq(authors.userId, user.id)).orderBy(asc(user.name)),
     getHome(),
     db.select({ n: count() }).from(articles).where(eq(articles.status, 'published')),
     db
@@ -112,9 +113,11 @@ export async function getAdminData(): Promise<AdminData> {
     comments: com.map((c) => ({ ...c, at: c.at.toISOString() })),
     sections: secs.map((s) => ({ id: s.id, name: s.name, slug: s.slug, inMenu: s.inMenu })),
     authors: auths,
-    team: team.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, twoFactor: !!u.twoFactorEnabled })),
+    team: team.map(({ u, bio }) => ({ id: u.id, name: u.name, email: u.email, role: u.role, twoFactor: !!u.twoFactorEnabled, image: u.image, bio: bio ?? '' })),
     home,
     stats: { published: pub.n, publishedMonth: pubMonth.n, subscribers: subs.n, reads: reads.n, pending: com.length },
+    videos: vids,
+    channels: chans,
   }
 }
 
@@ -138,4 +141,44 @@ export async function getEditorPayload(id: string): Promise<EditorPayload | null
     flash: a.breaking,
     createdBy: a.createdBy,
   }
+}
+
+export const toAdminVideo = (v: typeof videos.$inferSelect, poster: string | null): AdminVideo => ({
+  id: v.id,
+  slug: v.slug,
+  title: v.title,
+  description: v.description,
+  sectionId: v.sectionId,
+  authorId: v.authorId,
+  fileUrl: v.fileUrl,
+  youtubeId: v.youtubeId,
+  vertical: v.vertical,
+  posterId: v.posterId,
+  poster: poster ?? (v.youtubeId ? `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg` : null),
+  featured: v.featured,
+  status: v.status,
+  publishedAt: v.publishedAt?.toISOString() ?? null,
+  views: v.views,
+})
+
+export async function getAdminVideos(ids?: string[]): Promise<AdminVideo[]> {
+  const q = db.select({ v: videos, poster: media.key }).from(videos).leftJoin(media, eq(videos.posterId, media.id))
+  const rows = await (ids ? q.where(inArray(videos.id, ids)) : q).orderBy(desc(videos.updatedAt))
+  return rows.map((r) => toAdminVideo(r.v, r.poster))
+}
+
+export async function getAdminChannels(): Promise<AdminChannel[]> {
+  const rows = await db.select().from(videoChannels).orderBy(asc(videoChannels.position))
+  return rows.map((c) => ({
+    id: c.id,
+    slug: c.slug,
+    label: c.label,
+    name: c.name,
+    youtubeChannelId: c.youtubeChannelId,
+    url: c.url,
+    spotifyShowId: c.spotifyShowId,
+    authorId: c.authorId,
+    position: c.position,
+    active: c.active,
+  }))
 }

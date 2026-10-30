@@ -89,8 +89,9 @@ function SiteFooter({ menu }: { menu: MenuItem[] }) {
     {
       t: 'El Global',
       l: [
+        ['Portada', '/'],
+        ['Video', '/video'],
         ['Boletín diario', '/#t-news'],
-        ['Redacción', '/redaccion'],
       ],
     },
   ]
