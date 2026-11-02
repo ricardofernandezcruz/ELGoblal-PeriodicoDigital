@@ -96,7 +96,8 @@ export function AdminProvider({ me, initial, children }: { me: CurrentUser; init
     async <T,>(p: Promise<ActionResult<T>>) => {
       try {
         const r = await p
-        if (r.ok) return r.data
+        // undefined significa "falló": una acción que no devuelve datos responde true al salir bien.
+        if (r.ok) return r.data === undefined ? (true as T) : r.data
         toast(r.error)
       } catch {
         toast('Sin conexión con el servidor. Revisa tu red y vuelve a intentarlo.')
