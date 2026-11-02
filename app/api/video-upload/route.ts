@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { can } from '@/lib/permissions'
 import { getUser } from '@/lib/session'
-import { presignUpload } from '@/lib/storage'
+import { missingR2, presignUpload } from '@/lib/storage'
 
 /* Subida de archivos de video. El navegador pide un destino (POST) y sube el archivo
    directamente a él (PUT): a R2 con un enlace firmado o, en desarrollo, a esta misma ruta. */
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const key = `videos/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${ext}`
   const r2 = await presignUpload(key)
   if (r2) return NextResponse.json(r2)
-  if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'Falta configurar Cloudflare R2.' }, { status: 503 })
+  if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: `El almacenamiento de videos no está configurado: faltan ${missingR2().join(', ')} en Vercel.` }, { status: 503 })
   return NextResponse.json({ uploadUrl: `/api/video-upload?key=${encodeURIComponent(key)}`, publicUrl: `/uploads/${key}` })
 }
 

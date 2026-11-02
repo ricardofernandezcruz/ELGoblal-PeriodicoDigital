@@ -4,7 +4,7 @@ import { media } from '@/db/schema'
 import { toMedia } from '@/lib/newsroom'
 import { can } from '@/lib/permissions'
 import { getUser } from '@/lib/session'
-import { putObject } from '@/lib/storage'
+import { putObject, StorageError } from '@/lib/storage'
 
 const MAX = 3 * 1024 * 1024
 
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json(toMedia(row))
   } catch (e) {
     console.error('[media]', e)
-    return NextResponse.json({ error: 'No se pudo guardar la imagen. Inténtalo de nuevo.' }, { status: 500 })
+    if (e instanceof StorageError) return NextResponse.json({ error: e.message }, { status: 502 })
+    return NextResponse.json({ error: 'La imagen se subió, pero no se pudo registrar en la biblioteca. Inténtalo de nuevo.' }, { status: 500 })
   }
 }
