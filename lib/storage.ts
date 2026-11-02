@@ -34,11 +34,17 @@ export async function putObject(key: string, body: ArrayBuffer, type: string): P
   if (s) {
     let res: Response
     try {
-      res = await s.client.fetch(`${s.endpoint}/${key}`, {
+      // Se firma la petición y se envía con el contenido completo y su tamaño: R2 exige Content-Length
+      // y, en Vercel, una petición firmada con cuerpo viaja como flujo sin tamaño (error 411).
+      const bytes = new Uint8Array(body)
+      const signed = await s.client.sign(`${s.endpoint}/${key}`, {
         method: 'PUT',
-        body,
+        body: bytes,
         headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable' },
       })
+      const headers = new Headers(signed.headers)
+      headers.set('Content-Length', String(bytes.byteLength))
+      res = await fetch(signed.url, { method: 'PUT', headers, body: bytes, cache: 'no-store' })
     } catch {
       throw new StorageError('No se pudo conectar con Cloudflare R2. Revisa R2_ACCOUNT_ID en Vercel.')
     }
