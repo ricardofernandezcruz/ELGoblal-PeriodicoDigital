@@ -8,6 +8,7 @@ import { toggleTheme } from '@/components/eg/theme'
 import { useToast } from '@/components/eg/toast'
 import type { Card } from '@/lib/queries'
 import { cn } from '@/lib/utils'
+import { PushButton } from '@/components/site/pwa'
 
 const iconBtn = 'grid size-10 place-items-center rounded border border-transparent bg-transparent hover:border-eg-rule'
 
@@ -141,6 +142,7 @@ export function SiteHeader({
             <button ref={searchBtnRef} className={iconBtn} aria-label="Buscar (atajo /)" onClick={onSearch}>
               <Icon name="search" size={20} strokeWidth={1.8} round={false} />
             </button>
+            <PushButton className={cn(iconBtn, 'aria-pressed:text-eg-accent')} />
             <button className={iconBtn} aria-label="Cambiar tema" onClick={() => toast(toggleTheme() === 'dark' ? 'Modo oscuro' : 'Modo claro')}>
               <Icon name="moon" size={20} strokeWidth={1.8} round={false} />
             </button>
@@ -190,6 +192,7 @@ export function SiteHeader({
               ['Portada', '/'],
               ['Video', '/video'],
               ['Boletín diario', '/#t-news'],
+              ['Guardadas', '/guardadas'],
             ].map(([l, h]) => (
               <Link key={h} href={h} onClick={() => setMegaOpen(false)} className="block py-[5px] font-serif text-xl leading-[1.2] font-medium hover:text-eg-accent">
                 {l}

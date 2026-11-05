@@ -59,6 +59,10 @@ export const media = pgTable('media', {
   height: integer('height'),
   mime: text('mime'),
   bytes: integer('bytes'),
+  /** Autor o fuente de la imagen ("Foto: …"). Obligatorio al importarla desde un enlace. */
+  credit: text('credit').notNull().default(''),
+  /** En la papelera desde esta fecha; el cron la borra del almacenamiento a los 30 días. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
   createdAt: created(),
 })
@@ -76,6 +80,7 @@ export type ArticleBlock =
   | { id: string; t: 'video'; u: string; vert: boolean; cap?: string }
   | { id: string; t: 'data'; n: string; l: string }
   | { id: string; t: 'sum'; v: string }
+  | { id: string; t: 'poll'; q: string; opts: string[] }
 
 export const articles = pgTable(
   'articles',
@@ -99,6 +104,8 @@ export const articles = pgTable(
     allowComments: boolean('allow_comments').notNull().default(true),
     inNewsletter: boolean('in_newsletter').notNull().default(false),
     breaking: boolean('breaking').notNull().default(false),
+    /** Cobertura en vivo: la nota muestra actualizaciones que aparecen solas. */
+    live: boolean('live').notNull().default(false),
     reads: integer('reads').notNull().default(0),
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
@@ -111,6 +118,40 @@ export const articles = pgTable(
     index('articles_publish_at_idx').on(t.publishAt).where(sql`${t.status} = 'scheduled'`),
     check('articles_scheduled_has_date', sql`${t.status} <> 'scheduled' OR ${t.publishAt} IS NOT NULL`),
   ],
+)
+
+/** Entradas de una cobertura en vivo (la más reciente arriba). */
+export const liveUpdates = pgTable(
+  'live_updates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => articles.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default(''),
+    body: text('body').notNull(),
+    /** Destacada: se resalta y sube a la cabecera de la cobertura. */
+    important: boolean('important').notNull().default(false),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: created(),
+  },
+  (t) => [index('live_updates_article_idx').on(t.articleId, t.createdAt)],
+)
+
+/** Votos de las encuestas de las notas. voter = identificador anónimo del navegador. */
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => articles.id, { onDelete: 'cascade' }),
+    blockId: text('block_id').notNull(),
+    option: integer('option').notNull(),
+    voter: text('voter').notNull(),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex('poll_votes_once_idx').on(t.articleId, t.blockId, t.voter)],
 )
 
 /** Copias de una nota: se guardan solas al escribir y al publicar. */
@@ -163,7 +204,18 @@ export const subscribers = pgTable('subscribers', {
   email: text('email').notNull().unique(),
   topics: text('topics').array().notNull().default(sql`'{}'::text[]`),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  /** Último correo de confirmación enviado (como mucho uno por hora, para que nadie use el formulario para molestar a otro). */
+  confirmSentAt: timestamp('confirm_sent_at', { withTimezone: true }),
   unsubscribedAt: timestamp('unsubscribed_at', { withTimezone: true }),
+  createdAt: created(),
+})
+
+/** Navegadores que aceptaron los avisos de última hora (Web Push). */
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
   createdAt: created(),
 })
 
@@ -224,6 +276,8 @@ export const videos = pgTable(
     status: videoStatus('status').notNull().default('draft'),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     views: integer('views').notNull().default(0),
+    /** En la papelera desde esta fecha (vuelve como borrador si se restaura). */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     createdAt: created(),
     updatedAt: updated(),

@@ -6,6 +6,8 @@ import { Icon } from '@/components/eg/icon'
 import { ToastProvider } from '@/components/eg/toast'
 import { BreakingBar, SearchPalette, SiteHeader, type MenuItem } from '@/components/portada/site-header'
 import { cn } from '@/lib/utils'
+import { TopStrip } from './indicators'
+import { InstallBanner, useServiceWorker } from './pwa'
 
 /** Estructura común del sitio público: última hora, header, buscador, pie y barra inferior móvil. */
 export function SiteChrome({
@@ -32,6 +34,7 @@ function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaki
   const [megaOpen, setMegaOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const searchBtn = useRef<HTMLButtonElement>(null)
+  useServiceWorker()
 
   const closeSearch = () => {
     setSearchOpen(false)
@@ -60,6 +63,7 @@ function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaki
   return (
     <>
       {breaking?.on && <BreakingBar text={breaking.text} />}
+      <TopStrip />
       <SiteHeader
         menu={menu}
         active={active}
@@ -78,6 +82,7 @@ function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaki
         onSearch={() => setSearchOpen(true)}
       />
       <SearchPalette open={searchOpen} onClose={closeSearch} />
+      <InstallBanner />
     </>
   )
 }
@@ -92,6 +97,7 @@ function SiteFooter({ menu }: { menu: MenuItem[] }) {
         ['Portada', '/'],
         ['Video', '/video'],
         ['Boletín diario', '/#t-news'],
+        ['Guardadas', '/guardadas'],
       ],
     },
   ]
@@ -102,6 +108,17 @@ function SiteFooter({ menu }: { menu: MenuItem[] }) {
           <div className="font-serif text-[30px] leading-none font-semibold tracking-[-.02em]">El Global</div>
           <p className="max-w-[34ch] opacity-70">Periodismo para entender el mundo.</p>
           <p className="text-xs opacity-50">© {new Date().getFullYear()} El Global</p>
+          <p className="text-[11px] opacity-40">
+            Clima:{' '}
+            <a href="https://open-meteo.com/" target="_blank" rel="noopener" className="underline">
+              Open-Meteo
+            </a>
+            . Tasas de cambio:{' '}
+            <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener" className="underline">
+              ExchangeRate-API
+            </a>
+            .
+          </p>
         </div>
         {cols.map((c) => (
           <div key={c.t}>
@@ -137,9 +154,9 @@ function BottomNav({ onSections, onSearch }: { onSections: () => void; onSearch:
         <Icon name="search" size={20} strokeWidth={1.8} round={false} className="mx-auto mb-0.5 block" />
         Buscar
       </button>
-      <Link href="/#t-news" className={item}>
-        <Icon name="bell" size={20} strokeWidth={1.8} className="mx-auto mb-0.5 block" />
-        Boletín
+      <Link href="/guardadas" className={item}>
+        <Icon name="bookmark" size={20} strokeWidth={1.8} className="mx-auto mb-0.5 block" />
+        Guardadas
       </Link>
     </nav>
   )

@@ -1,13 +1,149 @@
 'use client'
 
-import { useState } from 'react'
-import { saveHome, saveMenu } from '@/app/redaccion/actions'
+import { useEffect, useState } from 'react'
+import { getNewsletterStatus, getPushStatus, saveHome, saveMenu, sendBreakingPush, sendNewsletterTest, type NewsletterStatus } from '@/app/redaccion/actions'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../store'
-import { B, Card, cp, Empty, h3, hint, I, inp, pageTitle, QL, Row2, sub, Switch } from '../ui'
+import { B, Card, cp, DlgRow, DlgTitle, Empty, h3, hint, I, inp, pageTitle, QL, Row2, sub, Switch } from '../ui'
 
 const NAMES = ['Nota principal', 'Secundaria 1', 'Secundaria 2']
+
+/** Estado del boletín diario, con vista previa y envío de prueba. */
+function NewsletterCard() {
+  const { call, toast } = useAdmin()
+  const [st, setSt] = useState<NewsletterStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    getNewsletterStatus().then((r) => r.ok && setSt(r.data))
+  }, [])
+  return (
+    <Card className={cp}>
+      <h3 className={h3}>Boletín diario</h3>
+      <div className={`${sub} mb-3`}>Sale solo cada mañana (6:00, hora de Santo Domingo) con las notas de las últimas 24 h. Las marcadas «para el boletín» van primero.</div>
+      {st ? (
+        <>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              [st.confirmed, 'suscriptores'],
+              [st.pending, 'sin confirmar'],
+              [st.stories, 'notas hoy'],
+            ].map(([n, l]) => (
+              <div key={l} className="rounded-lg bg-eg-soft px-2 py-2.5">
+                <b className="block font-serif text-[22px] leading-none">{n}</b>
+                <span className={sub}>{l}</span>
+              </div>
+            ))}
+          </div>
+          {!st.ready && (
+            <p className="mt-3 mb-0 rounded-lg bg-eg-warn/14 px-3 py-2 text-[13px] text-eg-warn">
+              El envío de correos no está configurado (falta RESEND_API_KEY). Los suscriptores se guardan, pero todavía no reciben nada.
+            </p>
+          )}
+          {st.lastSent && <div className={`${sub} mt-2`}>Último envío: {st.lastSent}</div>}
+        </>
+      ) : (
+        <div className={sub}>Cargando…</div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a href="/api/boletin/vista-previa" target="_blank" rel="noopener" className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-eg-rule bg-eg-panel px-2.5 text-[13px] font-semibold hover:bg-eg-soft">
+          <I n="eye" />
+          Ver cómo queda hoy
+        </a>
+        <B
+          v="out"
+          sm
+          disabled={busy || !st?.stories}
+          onClick={async () => {
+            setBusy(true)
+            const to = await call(sendNewsletterTest())
+            setBusy(false)
+            if (to) toast('Prueba enviada a ' + to)
+          }}
+        >
+          <I n="bell" />
+          {busy ? 'Enviando…' : 'Enviarme una prueba'}
+        </B>
+      </div>
+    </Card>
+  )
+}
+
+/** Aviso de última hora al celular o la computadora de los lectores que lo activaron. */
+function PushCard({ text }: { text: string }) {
+  const { call, toast, news, dialog, closeDialog } = useAdmin()
+  const [st, setSt] = useState<{ ready: boolean; count: number } | null>(null)
+  const [msg, setMsg] = useState(text)
+  const [art, setArt] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    getPushStatus().then((r) => r.ok && setSt(r.data))
+  }, [])
+  useEffect(() => setMsg(text), [text])
+  const recent = news.filter((n) => n.st === 'pub').slice(0, 30)
+  const send = async () => {
+    closeDialog()
+    setBusy(true)
+    const n = await call(sendBreakingPush({ text: msg, articleId: art || null }))
+    setBusy(false)
+    if (n !== undefined) toast(n === 1 ? 'Aviso enviado a 1 dispositivo' : `Aviso enviado a ${n} dispositivos`)
+  }
+  return (
+    <Card className={cp}>
+      <h3 className={h3}>Aviso al celular</h3>
+      <div className={`${sub} mb-2`}>
+        {st ? `${st.count} ${st.count === 1 ? 'dispositivo recibe' : 'dispositivos reciben'} los avisos.` : 'Cargando…'} Úsalo solo para noticias realmente urgentes: si
+        molesta, la gente lo desactiva.
+      </div>
+      {st && !st.ready && (
+        <p className="mt-0 mb-2 rounded-lg bg-eg-warn/14 px-3 py-2 text-[13px] text-eg-warn">Faltan las claves VAPID en Vercel: los avisos todavía no se pueden enviar.</p>
+      )}
+      <div className="grid gap-2">
+        <input className={inp} maxLength={160} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Texto del aviso" aria-label="Texto del aviso" />
+        <select className={inp} value={art} onChange={(e) => setArt(e.target.value)} aria-label="Nota que abre el aviso">
+          <option value="">Al tocarlo, abre la portada</option>
+          {recent.map((n) => (
+            <option key={n.id} value={n.id}>
+              Abre: {n.t.slice(0, 70)}
+            </option>
+          ))}
+        </select>
+        <div>
+          <B
+            v="acc"
+            sm
+            disabled={busy || msg.trim().length < 5 || !st?.count}
+            onClick={() =>
+              dialog(
+                <>
+                  <DlgTitle>¿Enviar el aviso ahora?</DlgTitle>
+                  <p className="text-sm text-eg-muted">
+                    Llega al momento a {st?.count} {st?.count === 1 ? 'dispositivo' : 'dispositivos'} y no se puede retirar.
+                  </p>
+                  <div className="my-3 rounded-lg border border-eg-rule bg-eg-bg p-3 text-sm">
+                    <b className="block">Última hora · El Global</b>
+                    {msg}
+                  </div>
+                  <DlgRow>
+                    <B v="out" onClick={closeDialog}>
+                      Cancelar
+                    </B>
+                    <B v="acc" onClick={send}>
+                      Enviar aviso
+                    </B>
+                  </DlgRow>
+                </>,
+              )
+            }
+          >
+            <I n="bell" />
+            {busy ? 'Enviando…' : 'Enviar aviso'}
+          </B>
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 export function HomeView() {
   const { news, home, setHome, sections, setSections, call, toast, can } = useAdmin()
@@ -163,6 +299,9 @@ export function HomeView() {
               ))}
             </QL>
           </Card>
+
+          {allowed && <PushCard text={draft.breaking.text} />}
+          {allowed && <NewsletterCard />}
         </div>
 
         <div>

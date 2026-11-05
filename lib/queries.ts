@@ -1,8 +1,8 @@
 import 'server-only'
-import { and, asc, desc, eq, ilike, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/db'
-import { articles, authors, comments, media, sections, type ArticleBlock } from '@/db/schema'
+import { articles, authors, comments, liveUpdates, media, sections, type ArticleBlock } from '@/db/schema'
 import { getHome } from './newsroom'
 
 /* Consultas del sitio público. Una nota programada cuenta como publicada en cuanto llega su hora,
@@ -24,6 +24,8 @@ export type Card = {
   img: string | null
   alt: string
   href: string
+  /** Cobertura en vivo activa. */
+  live: boolean
 }
 
 const cardCols = {
@@ -38,6 +40,7 @@ const cardCols = {
   reads: articles.reads,
   img: media.key,
   alt: media.alt,
+  live: articles.live,
 }
 
 const cards = () =>
@@ -54,6 +57,15 @@ const toCard = (r: Omit<Card, 'href' | 'date' | 'alt'> & { date: Date | string; 
   date: new Date(r.date).toISOString(),
   href: `/${r.secSlug}/${r.slug}`,
 })
+
+/** Notas del boletín: publicadas desde `since`. Primero las marcadas «para el boletín» y las de última hora; luego las más recientes. */
+export async function getDigestCards(since: Date, limit = 8): Promise<Card[]> {
+  const rows = await cards()
+    .where(and(isLive(), sql`${liveDate} >= ${since.toISOString()}::timestamptz`))
+    .orderBy(desc(articles.inNewsletter), desc(articles.breaking), desc(liveDate))
+    .limit(limit)
+  return rows.map(toCard)
+}
 
 export async function getMenu() {
   return db.select({ name: sections.name, slug: sections.slug }).from(sections).where(eq(sections.inMenu, true)).orderBy(asc(sections.position))
@@ -104,6 +116,7 @@ const avatar = alias(media, 'avatar')
 
 export type FullArticle = {
   id: string
+  slug: string
   title: string
   lead: string
   sec: string
@@ -117,12 +130,36 @@ export type FullArticle = {
   seo: string
   allowComments: boolean
   hero: { src: string; alt: string } | null
+  /** Crédito de cada imagen de la nota, por URL. */
+  credits: Record<string, string>
+  live: boolean
+  updates: LiveUpdate[]
+}
+
+export type LiveUpdate = { id: string; title: string; body: string; important: boolean; at: string }
+
+/** Entradas de una cobertura en vivo, la más reciente primero. Con `after`, solo las más nuevas. */
+export async function getLiveUpdateList(articleId: string, after?: Date) {
+  const rows = await db
+    .select({ id: liveUpdates.id, title: liveUpdates.title, body: liveUpdates.body, important: liveUpdates.important, at: liveUpdates.createdAt })
+    .from(liveUpdates)
+    .where(and(eq(liveUpdates.articleId, articleId), after ? sql`${liveUpdates.createdAt} > ${after.toISOString()}::timestamptz` : undefined))
+    .orderBy(desc(liveUpdates.createdAt))
+    .limit(200)
+  return rows.map((r) => ({ ...r, at: r.at.toISOString() }))
+}
+
+/** ¿Se puede leer la nota en el sitio ahora mismo? */
+export async function isArticleLive(id: string) {
+  const [a] = await db.select({ live: articles.live, blocks: articles.blocks }).from(articles).where(and(eq(articles.id, id), isLive()))
+  return a ?? null
 }
 
 export async function getArticle(secSlug: string, slug: string) {
   const [a] = await db
     .select({
       id: articles.id,
+      slug: articles.slug,
       title: articles.title,
       lead: articles.lead,
       sec: sections.name,
@@ -138,6 +175,8 @@ export async function getArticle(secSlug: string, slug: string) {
       allowComments: articles.allowComments,
       heroSrc: media.key,
       heroAlt: media.alt,
+      heroCredit: media.credit,
+      live: articles.live,
     })
     .from(articles)
     .innerJoin(sections, eq(articles.sectionId, sections.id))
@@ -147,7 +186,8 @@ export async function getArticle(secSlug: string, slug: string) {
     .where(and(isLive(), eq(sections.slug, secSlug), eq(articles.slug, slug)))
   if (!a) return null
 
-  const [related, coms] = await Promise.all([
+  const imgIds = a.blocks.flatMap((b) => (b.t === 'img' && b.mediaId ? [b.mediaId] : []))
+  const [related, coms, credited, updates] = await Promise.all([
     cards()
       .where(and(isLive(), eq(articles.sectionId, a.sectionId), ne(articles.id, a.id)))
       .orderBy(desc(liveDate))
@@ -157,6 +197,10 @@ export async function getArticle(secSlug: string, slug: string) {
       .from(comments)
       .where(and(eq(comments.articleId, a.id), eq(comments.status, 'approved')))
       .orderBy(asc(comments.createdAt)),
+    imgIds.length
+      ? db.select({ key: media.key, credit: media.credit }).from(media).where(and(inArray(media.id, imgIds), ne(media.credit, '')))
+      : Promise.resolve([]),
+    a.live ? getLiveUpdateList(a.id) : Promise.resolve([]),
   ])
   let rel = related.map(toCard)
   if (rel.length < 4) {
@@ -169,6 +213,7 @@ export async function getArticle(secSlug: string, slug: string) {
 
   const article: FullArticle = {
     id: a.id,
+    slug: a.slug,
     title: a.title,
     lead: a.lead,
     sec: a.sec,
@@ -182,6 +227,9 @@ export async function getArticle(secSlug: string, slug: string) {
     seo: a.seo,
     allowComments: a.allowComments,
     hero: a.heroSrc ? { src: a.heroSrc, alt: a.heroAlt ?? '' } : null,
+    live: a.live,
+    updates,
+    credits: Object.fromEntries([...credited.map((m) => [m.key, m.credit]), ...(a.heroSrc && a.heroCredit ? [[a.heroSrc, a.heroCredit]] : [])]),
   }
   return {
     article,

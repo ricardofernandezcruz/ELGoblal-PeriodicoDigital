@@ -3,14 +3,21 @@
 /* Acciones del panel de redacción. Cada una valida la entrada y comprueba el permiso
    antes de tocar la base de datos. */
 import { hashPassword } from 'better-auth/crypto'
-import { and, desc, eq, inArray, like, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, like, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
 import { ROLES } from '@/db/auth-schema'
-import { account, articles, articleVersions, auditLog, authors, comments, media, sections, session, settings, twoFactor, user, type ArticleBlock } from '@/db/schema'
-import { getEditorPayload, getNews, slugify } from '@/lib/newsroom'
-import { DB_STATUS, type ActionResult, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type Status } from '@/lib/newsroom-types'
+import { account, articles, articleVersions, auditLog, authors, comments, media, sections, liveUpdates, session, settings, subscribers, twoFactor, user, videos, type ArticleBlock } from '@/db/schema'
+import { EmailError, emailReady, sendEmail } from '@/lib/email'
+import { imageKey, MAX_IMAGE, sniffImage } from '@/lib/image'
+import { buildDigest, digestEmail } from '@/lib/newsletter'
+import { mediaUsage, unavailableMedia } from '@/lib/media-usage'
+import { getEditorPayload, getNews, slugify, toMedia } from '@/lib/newsroom'
+import { pushCount, PushError, pushReady, sendPush } from '@/lib/push'
+import { fetchRemoteImage, RemoteImageError } from '@/lib/remote-image'
+import { deleteObject, putObject, StorageError } from '@/lib/storage'
+import { DB_STATUS, type ActionResult, type AdminMedia, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type MediaUse, type Status } from '@/lib/newsroom-types'
 import { can, canEditArticle } from '@/lib/permissions'
 import { ForbiddenError, getUser, requirePermission, type CurrentUser } from '@/lib/session'
 
@@ -38,7 +45,7 @@ const refreshSite = () => revalidatePath('/', 'layout')
 const str = (max: number) => z.string().max(max).default('')
 const blockSchema = z.object({
   id: z.string().max(40),
-  t: z.enum(['p', 'sub', 'img', 'quote', 'video', 'data', 'sum']),
+  t: z.enum(['p', 'sub', 'img', 'quote', 'video', 'data', 'sum', 'poll']),
   v: str(20000).optional(),
   who: str(200).optional(),
   mediaId: z.uuid().nullable().optional(),
@@ -48,6 +55,8 @@ const blockSchema = z.object({
   vert: z.boolean().optional(),
   n: str(40).optional(),
   l: str(300).optional(),
+  q: str(200).optional(),
+  opts: z.array(z.string().max(80)).max(6).optional(),
 })
 
 const saveSchema = z.object({
@@ -63,6 +72,7 @@ const saveSchema = z.object({
   com: z.boolean(),
   news: z.boolean(),
   flash: z.boolean(),
+  live: z.boolean().default(false),
   manual: z.boolean().default(false),
 })
 
@@ -90,6 +100,9 @@ async function toStoredBlocks(blocks: z.infer<typeof blockSchema>[]): Promise<Ar
         break
       case 'data':
         out.push({ id: b.id, t: 'data', n: b.n ?? '', l: b.l ?? '' })
+        break
+      case 'poll':
+        out.push({ id: b.id, t: 'poll', q: b.q ?? '', opts: (b.opts ?? []).map((o) => o.trim()) })
         break
     }
   }
@@ -125,6 +138,12 @@ export async function loadArticle(id: string): Promise<ActionResult<EditorPayloa
   })
 }
 
+/** Una nota no se publica con imágenes que están en la papelera o ya se borraron. */
+async function hasMissingImages(a: { heroId: string | null; blocks: ArticleBlock[] }) {
+  return (await unavailableMedia([a.heroId, ...a.blocks.map((b) => (b.t === 'img' ? b.mediaId : null))])).size > 0
+}
+const MISSING_IMAGE = 'La nota usa una imagen que se borró de la biblioteca. Elige otra (aparece marcada en el editor) antes de publicar.'
+
 export async function saveArticle(
   input: z.input<typeof saveSchema>,
 ): Promise<ActionResult<{ id: string; slug: string; savedAt: string; version: AdminVersion | null; news: AdminNews }>> {
@@ -137,6 +156,8 @@ export async function saveArticle(
 
     const blocks = await toStoredBlocks(d.blocks)
     const hero = blocks.find((b): b is Extract<ArticleBlock, { t: 'img' }> => b.t === 'img' && !!b.mediaId)
+    if ((existing?.status === 'published' || existing?.status === 'scheduled') && (await hasMissingImages({ heroId: hero?.mediaId ?? null, blocks })))
+      throw new UserError(MISSING_IMAGE)
     const slug = await uniqueSlug(d.slug || d.title, d.sectionId, d.id)
     const values = {
       title: d.title,
@@ -151,6 +172,7 @@ export async function saveArticle(
       allowComments: d.com,
       inNewsletter: d.news,
       breaking: d.flash,
+      live: d.live,
       updatedBy: u.id,
     }
     const [row] = existing
@@ -191,6 +213,7 @@ export async function setArticleStatus(input: z.input<typeof statusSchema>): Pro
     const live = a.status === 'published' || a.status === 'scheduled'
     if ((publishing || live) && !can(u.role, 'article.publish')) throw new ForbiddenError()
     if (publishing && !a.title.trim()) throw new UserError('Escribe un titular antes de publicar.')
+    if (publishing && (await hasMissingImages(a))) throw new UserError(MISSING_IMAGE)
     let publishAt: Date | null = null
     if (d.mode === 'sch') {
       publishAt = d.when ? new Date(d.when) : null
@@ -217,7 +240,7 @@ export async function bulkSetStatus(ids: string[], mode: 'pub' | 'draft'): Promi
     const list = z.array(z.uuid()).max(200).parse(ids)
     for (const id of list) {
       const a = await loadForEdit(u, id)
-      if (mode === 'pub' && !a.title.trim()) continue
+      if (mode === 'pub' && (!a.title.trim() || (await hasMissingImages(a)))) continue
       await db
         .update(articles)
         .set({ status: DB_STATUS[mode], publishAt: null, publishedAt: mode === 'pub' ? (a.publishedAt ?? new Date()) : a.publishedAt, updatedBy: u.id })
@@ -294,15 +317,276 @@ export async function getVersion(versionId: string): Promise<ActionResult<{ titl
   })
 }
 
+/* ---------- Cobertura en vivo ---------- */
+
+export type AdminLiveUpdate = { id: string; title: string; body: string; important: boolean; at: string; by: string | null }
+
+const liveSchema = z.object({ title: z.string().trim().max(160), body: z.string().trim().min(2).max(4000), important: z.boolean() })
+
+async function articlePath(id: string) {
+  const [r] = await db.select({ slug: articles.slug, sec: sections.slug }).from(articles).innerJoin(sections, eq(articles.sectionId, sections.id)).where(eq(articles.id, id))
+  return r ? `/${r.sec}/${r.slug}` : null
+}
+
+export async function listLiveUpdates(articleId: string): Promise<ActionResult<AdminLiveUpdate[]>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    await loadForEdit(u, z.uuid().parse(articleId))
+    const rows = await db
+      .select({ id: liveUpdates.id, title: liveUpdates.title, body: liveUpdates.body, important: liveUpdates.important, at: liveUpdates.createdAt, by: user.name })
+      .from(liveUpdates)
+      .leftJoin(user, eq(liveUpdates.createdBy, user.id))
+      .where(eq(liveUpdates.articleId, articleId))
+      .orderBy(desc(liveUpdates.createdAt))
+      .limit(100)
+    return rows.map((r) => ({ ...r, at: r.at.toISOString() }))
+  })
+}
+
+/** Publica una entrada en la cobertura. Quien puede editar la nota puede escribir en su directo. */
+export async function addLiveUpdate(articleId: string, input: z.input<typeof liveSchema>): Promise<ActionResult<AdminLiveUpdate>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    const a = await loadForEdit(u, z.uuid().parse(articleId))
+    const parsed = liveSchema.safeParse(input)
+    if (!parsed.success) throw new UserError('Escribe el texto de la actualización.')
+    const [r] = await db.insert(liveUpdates).values({ articleId: a.id, ...parsed.data, createdBy: u.id }).returning()
+    if (!a.live) await db.update(articles).set({ live: true }).where(eq(articles.id, a.id))
+    const path = await articlePath(a.id)
+    if (path) revalidatePath(path)
+    if (a.status === 'published' && !a.live) refreshSite()
+    return { id: r.id, title: r.title, body: r.body, important: r.important, at: r.createdAt.toISOString(), by: u.name }
+  })
+}
+
+export async function deleteLiveUpdate(id: string): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    const [r] = await db.select({ articleId: liveUpdates.articleId }).from(liveUpdates).where(eq(liveUpdates.id, z.uuid().parse(id)))
+    if (!r) return
+    await loadForEdit(u, r.articleId)
+    await db.delete(liveUpdates).where(eq(liveUpdates.id, id))
+    const path = await articlePath(r.articleId)
+    if (path) revalidatePath(path)
+  })
+}
+
 /* ---------- Multimedia ---------- */
 
-export async function updateMediaAlt(id: string, alt: string): Promise<ActionResult<void>> {
+const mediaInfo = z.object({ alt: z.string().trim().max(400), credit: z.string().trim().max(200) })
+
+export async function updateMediaInfo(id: string, input: z.input<typeof mediaInfo>): Promise<ActionResult<void>> {
   return run(async () => {
     await requirePermission('article.create')
-    await db
-      .update(media)
-      .set({ alt: z.string().max(400).parse(alt).trim() })
-      .where(eq(media.id, z.uuid().parse(id)))
+    await db.update(media).set(mediaInfo.parse(input)).where(eq(media.id, z.uuid().parse(id)))
+    refreshSite()
+  })
+}
+
+/** Dónde se usa una imagen, consultado en el momento (la lista del panel puede estar desactualizada). */
+export async function getMediaUses(id: string): Promise<ActionResult<MediaUse[]>> {
+  return run(async () => {
+    await requirePermission('article.create')
+    const mid = z.uuid().parse(id)
+    return (await mediaUsage([mid])).get(mid) ?? []
+  })
+}
+
+async function loadMediaFor(u: CurrentUser, id: string) {
+  const [m] = await db.select().from(media).where(eq(media.id, z.uuid().parse(id)))
+  if (!m) throw new UserError('Esa imagen ya no existe.')
+  if (m.createdBy !== u.id && !can(u.role, 'media.manage'))
+    throw new UserError('Solo puedes borrar las imágenes que subiste tú. Pídeselo a un editor.')
+  return m
+}
+
+/** Quita una imagen de las notas en borrador (bloques y portada) y de los videos sin publicar. */
+async function detachFromDrafts(m: typeof media.$inferSelect) {
+  const rows = await db
+    .select({ id: articles.id, blocks: articles.blocks, heroId: articles.heroId })
+    .from(articles)
+    .where(and(inArray(articles.status, ['draft', 'review']), sql`(${articles.heroId} = ${m.id} or ${articles.blocks} @> ${JSON.stringify([{ mediaId: m.id }])}::jsonb or ${articles.blocks} @> ${JSON.stringify([{ src: m.key }])}::jsonb)`))
+  for (const a of rows) {
+    const blocks = a.blocks.filter((b) => !(b.t === 'img' && (b.mediaId === m.id || b.src === m.key)))
+    const hero = blocks.find((b): b is Extract<ArticleBlock, { t: 'img' }> => b.t === 'img' && !!b.mediaId)
+    await db.update(articles).set({ blocks, heroId: hero?.mediaId ?? null }).where(eq(articles.id, a.id))
+  }
+  await db.update(videos).set({ posterId: null }).where(and(eq(videos.posterId, m.id), ne(videos.status, 'published')))
+}
+
+/** Manda una imagen a la papelera (se borra del todo a los 30 días).
+    - Sin usar: directo.
+    - Solo en borradores: hay que confirmarlo (fromDrafts) y se quita de esos borradores.
+    - En algo publicado: no se puede; primero hay que reemplazarla. */
+export async function trashMedia(id: string, fromDrafts = false): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    const m = await loadMediaFor(u, id)
+    if (m.deletedAt) return
+    const uses = (await mediaUsage([m.id])).get(m.id) ?? []
+    const live = uses.filter((x) => x.live)
+    if (live.length)
+      throw new UserError(`Esta imagen se ve en ${live.length === 1 ? '1 publicación' : live.length + ' publicaciones'}. Reemplázala por otra antes de borrarla.`)
+    if (uses.length) {
+      if (!can(u.role, 'media.manage')) throw new UserError('Esta imagen se usa en borradores. Quítala de ellos o pídele a un editor que la borre.')
+      if (!fromDrafts) throw new UserError('Esta imagen se usa en borradores. Confirma que quieres quitarla de ellos.')
+      await detachFromDrafts(m)
+    }
+    await db.update(media).set({ deletedAt: new Date() }).where(eq(media.id, m.id))
+    await audit(u, 'media.trash', 'media', m.id, { name: m.name, drafts: uses.map((x) => x.id) })
+  })
+}
+
+export async function restoreMedia(id: string): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    const m = await loadMediaFor(u, id)
+    await db.update(media).set({ deletedAt: null }).where(eq(media.id, m.id))
+    await audit(u, 'media.restore', 'media', m.id, { name: m.name })
+  })
+}
+
+/** Borra ya, sin esperar los 30 días. Solo desde la papelera. */
+export async function purgeMedia(id: string): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('media.manage')
+    const m = await loadMediaFor(u, id)
+    if (!m.deletedAt) throw new UserError('Primero manda la imagen a la papelera.')
+    if (!(await deleteObject(m.key))) throw new UserError('El almacenamiento no pudo borrar el archivo. Inténtalo de nuevo más tarde.')
+    await db.delete(media).where(eq(media.id, m.id))
+    await audit(u, 'media.purge', 'media', m.id, { name: m.name })
+  })
+}
+
+/** Cambia una imagen por otra en todas partes (notas, portadas de video, fotos de firma) y manda la vieja a la papelera. */
+export async function replaceMedia(oldId: string, newId: string): Promise<ActionResult<number>> {
+  return run(async () => {
+    const u = await requirePermission('media.manage')
+    const [from] = await db.select().from(media).where(eq(media.id, z.uuid().parse(oldId)))
+    const [to] = await db.select().from(media).where(and(eq(media.id, z.uuid().parse(newId)), isNull(media.deletedAt)))
+    if (!from || !to) throw new UserError('Una de las dos imágenes ya no está en la biblioteca.')
+    if (from.id === to.id) throw new UserError('Elige una imagen distinta.')
+
+    const rows = await db
+      .select({ id: articles.id, blocks: articles.blocks, heroId: articles.heroId })
+      .from(articles)
+      .where(sql`(${articles.heroId} = ${from.id} or ${articles.blocks} @> ${JSON.stringify([{ mediaId: from.id }])}::jsonb or ${articles.blocks} @> ${JSON.stringify([{ src: from.key }])}::jsonb)`)
+    for (const a of rows) {
+      const blocks = a.blocks.map((b) =>
+        b.t === 'img' && (b.mediaId === from.id || b.src === from.key) ? { ...b, mediaId: to.id, src: to.key, alt: to.alt || b.alt } : b,
+      )
+      await db
+        .update(articles)
+        .set({ blocks, heroId: a.heroId === from.id ? to.id : a.heroId })
+        .where(eq(articles.id, a.id))
+    }
+    await db.update(videos).set({ posterId: to.id }).where(eq(videos.posterId, from.id))
+    await db.update(authors).set({ avatarId: to.id }).where(eq(authors.avatarId, from.id))
+    await db.update(user).set({ image: to.key }).where(eq(user.image, from.key))
+    await db.update(media).set({ deletedAt: new Date() }).where(eq(media.id, from.id))
+    await audit(u, 'media.replace', 'media', from.id, { to: to.id, articles: rows.map((a) => a.id) })
+    refreshSite()
+    return rows.length
+  })
+}
+
+const importSchema = z.object({
+  url: z.string().trim().min(8).max(2000),
+  credit: z.string().trim().min(2, 'Escribe el crédito o la fuente de la imagen.').max(200),
+})
+
+/** Descarga una imagen desde un enlace (o la principal de una página) y la guarda en la biblioteca con su crédito. */
+export async function importMediaFromUrl(input: z.input<typeof importSchema>): Promise<ActionResult<AdminMedia>> {
+  return run(async () => {
+    const u = await requirePermission('article.create')
+    const parsed = importSchema.safeParse(input)
+    if (!parsed.success) throw new UserError(parsed.error.issues[0]?.message ?? 'Revisa el enlace y el crédito.')
+    const d = parsed.data
+    let file: Awaited<ReturnType<typeof fetchRemoteImage>>
+    try {
+      file = await fetchRemoteImage(d.url, MAX_IMAGE)
+    } catch (e) {
+      if (e instanceof RemoteImageError) throw new UserError(e.message)
+      throw e
+    }
+    const kind = sniffImage(new Uint8Array(file.body.subarray(0, 12)))
+    if (!kind) throw new UserError('Ese enlace no es una imagen JPG, PNG, WebP o GIF.')
+    let url: string
+    try {
+      url = await putObject(imageKey(kind.ext), new Uint8Array(file.body).buffer, kind.mime)
+    } catch (e) {
+      if (e instanceof StorageError) throw new UserError(e.message)
+      throw e
+    }
+    const [row] = await db
+      .insert(media)
+      .values({ key: url, name: file.name, credit: d.credit, mime: kind.mime, bytes: file.body.length, createdBy: u.id })
+      .returning()
+    await audit(u, 'media.import', 'media', row.id, { source: file.source })
+    return toMedia(row)
+  })
+}
+
+/* ---------- Boletín ---------- */
+
+export type NewsletterStatus = { ready: boolean; confirmed: number; pending: number; stories: number; lastSent: string | null }
+
+export async function getNewsletterStatus(): Promise<ActionResult<NewsletterStatus>> {
+  return run(async () => {
+    await requirePermission('home.manage')
+    const [[c], [p], d, [st]] = await Promise.all([
+      db.select({ n: sql<number>`count(*)::int` }).from(subscribers).where(and(isNotNull(subscribers.confirmedAt), isNull(subscribers.unsubscribedAt))),
+      db.select({ n: sql<number>`count(*)::int` }).from(subscribers).where(and(isNull(subscribers.confirmedAt), isNull(subscribers.unsubscribedAt))),
+      buildDigest(),
+      db.select().from(settings).where(eq(settings.key, 'newsletter')),
+    ])
+    return { ready: emailReady(), confirmed: c.n, pending: p.n, stories: d?.stories.length ?? 0, lastSent: (st?.value as { lastSent?: string } | undefined)?.lastSent ?? null }
+  })
+}
+
+/** Manda el boletín de hoy solo a quien lo pide, para revisarlo en su bandeja. */
+export async function sendNewsletterTest(): Promise<ActionResult<string>> {
+  return run(async () => {
+    const u = await requirePermission('home.manage')
+    const d = await buildDigest()
+    if (!d) throw new UserError('No hay notas publicadas en las últimas 24 horas: hoy no se enviaría boletín.')
+    const e = digestEmail(d, { id: '00000000-0000-0000-0000-000000000000', email: u.email })
+    try {
+      await sendEmail({ ...e, subject: '[Prueba] ' + e.subject })
+    } catch (err) {
+      if (err instanceof EmailError) throw new UserError(err.message)
+      throw err
+    }
+    return u.email
+  })
+}
+
+/* ---------- Avisos de última hora ---------- */
+
+export async function getPushStatus(): Promise<ActionResult<{ ready: boolean; count: number }>> {
+  return run(async () => {
+    await requirePermission('home.manage')
+    return { ready: pushReady(), count: await pushCount() }
+  })
+}
+
+const pushMsg = z.object({ text: z.string().trim().min(5).max(160), articleId: z.uuid().nullable() })
+
+/** Manda un aviso al celular/computadora de quien lo activó. Abre la nota elegida o la portada. */
+export async function sendBreakingPush(input: z.input<typeof pushMsg>): Promise<ActionResult<number>> {
+  return run(async () => {
+    const u = await requirePermission('home.manage')
+    const d = pushMsg.safeParse(input)
+    if (!d.success) throw new UserError('Escribe el aviso (entre 5 y 160 caracteres).')
+    const url = (d.data.articleId && (await articlePath(d.data.articleId))) || '/'
+    try {
+      const r = await sendPush({ title: 'Última hora · El Global', body: d.data.text, url })
+      await audit(u, 'push.send', 'site', null, { text: d.data.text, url, ...r })
+      return r.sent
+    } catch (e) {
+      if (e instanceof PushError) throw new UserError(e.message)
+      throw e
+    }
   })
 }
 

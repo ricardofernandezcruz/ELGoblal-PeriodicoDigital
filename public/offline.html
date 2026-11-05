@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sin conexión · El Global</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f7f3ec; --ink: #14181f; --muted: #5b6470; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1720; --ink: #ece7dd; --muted: #9aa3ad; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink); font-family: Georgia, 'Times New Roman', serif; text-align: center; padding: 24px; }
+  h1 { font-size: 40px; margin: 0 0 24px; letter-spacing: -.02em; }
+  p { color: var(--muted); font-size: 18px; line-height: 1.5; max-width: 34ch; margin: 0 auto 24px; }
+  button { font: 600 15px Arial, sans-serif; padding: 12px 20px; border-radius: 6px; border: 0; background: var(--ink); color: var(--bg); }
+</style>
+</head>
+<body>
+  <main>
+    <h1>El Global</h1>
+    <p>No hay conexión a internet. Cuando vuelva, las noticias estarán aquí.</p>
+    <button onclick="location.reload()">Reintentar</button>
+  </main>
+</body>
+</html>

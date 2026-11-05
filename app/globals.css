@@ -280,3 +280,30 @@ body.eg-focus footer {
     transition: none !important;
   }
 }
+
+/* Marquee (components/shadcn-space/animations/marquee.tsx) */
+@keyframes eg-marquee {
+  to {
+    transform: translateX(calc(-100% - var(--gap)));
+  }
+}
+.eg-marquee {
+  animation: eg-marquee var(--duration) linear infinite;
+}
+.eg-marquee-reverse {
+  animation-direction: reverse;
+}
+.eg-marquee-pause:hover .eg-marquee,
+.eg-marquee-pause:focus-within .eg-marquee {
+  animation-play-state: paused;
+}
+
+/* Historias: acercamiento lento de la foto (efecto Ken Burns) */
+@keyframes eg-ken {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}

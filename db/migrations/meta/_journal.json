@@ -15,6 +15,27 @@
       "when": 1793368332565,
       "tag": "0001_video",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793888461464,
+      "tag": "0002_media_trash",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793889655010,
+      "tag": "0003_newsletter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793891104961,
+      "tag": "0004_live_polls_push",
+      "breakpoints": true
     }
   ]
 }

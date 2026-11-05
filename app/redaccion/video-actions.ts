@@ -138,13 +138,31 @@ export async function setVideoStatus(id: string, publish: boolean): Promise<Acti
   })
 }
 
-export async function deleteVideo(id: string): Promise<ActionResult<void>> {
+/** Manda el video a la papelera: sale del sitio al momento y el cron borra su archivo a los 30 días. */
+export async function deleteVideo(id: string): Promise<ActionResult<AdminVideo>> {
   return run(async () => {
     const u = await requirePermission('article.publish')
     const vid = z.uuid().parse(id)
-    const [v] = await db.delete(videos).where(eq(videos.id, vid)).returning({ title: videos.title })
-    await audit(u, 'video.delete', vid, { title: v?.title })
+    const [v] = await db
+      .update(videos)
+      .set({ deletedAt: new Date(), status: 'draft', featured: false })
+      .where(eq(videos.id, vid))
+      .returning({ title: videos.title })
+    if (!v) throw new UserError('Ese video ya no existe.')
+    await audit(u, 'video.trash', vid, { title: v.title })
     refresh()
+    return (await getAdminVideos([vid]))[0]
+  })
+}
+
+/** Saca el video de la papelera; vuelve como borrador. */
+export async function restoreVideo(id: string): Promise<ActionResult<AdminVideo>> {
+  return run(async () => {
+    const u = await requirePermission('article.publish')
+    const vid = z.uuid().parse(id)
+    await db.update(videos).set({ deletedAt: null }).where(eq(videos.id, vid))
+    await audit(u, 'video.restore', vid)
+    return (await getAdminVideos([vid]))[0]
   })
 }
 

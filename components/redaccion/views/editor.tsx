@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
-import { getVersion, listVersions, saveArticle, setArticleStatus } from '@/app/redaccion/actions'
+import { addLiveUpdate, deleteLiveUpdate, getVersion, listLiveUpdates, listVersions, saveArticle, setArticleStatus, type AdminLiveUpdate } from '@/app/redaccion/actions'
 import {
   BH,
   BI,
@@ -178,6 +178,7 @@ function EditorInner() {
           com: x.com,
           news: x.news,
           flash: x.flash,
+          live: x.live,
           manual,
         }),
       )
@@ -588,6 +589,9 @@ function Blocks({
   onDelete: () => void
   onGen: (i: number) => void
 }) {
+  const { media } = useAdmin()
+  // Imágenes que ya no están en la biblioteca (en la papelera o borradas), p. ej. al restaurar una versión vieja.
+  const gone = (b: Block) => !!b.mediaId && !media.some((m) => m.id === b.mediaId && !m.d)
   const [from, setFrom] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
   const add = (i: number) => (
@@ -751,7 +755,14 @@ function Blocks({
               {b.t === 'img' && (
                 <>
                   <div className="flex items-center gap-3 max-[520px]:flex-col max-[520px]:items-stretch">
-                    <Thumb className="h-[84px] w-[132px]">{b.src && <ArtImg src={b.src} />}</Thumb>
+                    <Thumb className="relative h-[84px] w-[132px]">
+                      {b.src && <ArtImg src={b.src} className={gone(b) ? 'opacity-30 grayscale' : undefined} />}
+                      {gone(b) && (
+                        <span className="absolute inset-0 grid place-items-center p-1 text-center text-[11px] leading-tight font-semibold text-eg-accent">
+                          Imagen eliminada, elige otra
+                        </span>
+                      )}
+                    </Thumb>
                     <div className="grid flex-1 gap-2">
                       <div>
                         <B
@@ -821,6 +832,48 @@ function Blocks({
                     onChange={(e) => setBlock(i, { l: e.target.value })}
                   />
                 </div>
+              )}
+              {b.t === 'poll' && (
+                <>
+                  <input
+                    className={cn(inp, field, 'font-serif !text-[17px] font-medium')}
+                    placeholder="Pregunta, p. ej.: ¿Debe subir el salario mínimo?"
+                    aria-label="Pregunta de la encuesta"
+                    maxLength={200}
+                    value={b.q ?? ''}
+                    onChange={(e) => setBlock(i, { q: e.target.value })}
+                  />
+                  {(b.opts ?? []).map((o, j) => (
+                    <div key={j} className="flex items-center gap-2">
+                      <span className="grid size-6 flex-none place-items-center rounded-full bg-eg-soft text-xs font-semibold">{j + 1}</span>
+                      <input
+                        className={cn(inp, field)}
+                        placeholder={'Opción ' + (j + 1)}
+                        aria-label={'Opción ' + (j + 1)}
+                        maxLength={80}
+                        value={o}
+                        onChange={(e) => setBlock(i, { opts: (b.opts ?? []).map((x, k) => (k === j ? e.target.value : x)) })}
+                      />
+                      <B
+                        v="ghost"
+                        ic
+                        sm
+                        aria-label={'Quitar opción ' + (j + 1)}
+                        disabled={(b.opts ?? []).length <= 2}
+                        onClick={() => setBlock(i, { opts: (b.opts ?? []).filter((_, k) => k !== j) })}
+                      >
+                        <I n="x" />
+                      </B>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <B v="out" sm disabled={(b.opts ?? []).length >= 6} onClick={() => setBlock(i, { opts: [...(b.opts ?? []), ''] })}>
+                      <I n="plus" />
+                      Añadir opción
+                    </B>
+                    <span className={hint}>De 2 a 6 opciones. Los resultados se ven al votar.</span>
+                  </div>
+                </>
               )}
               {b.t === 'sum' && (
                 <>
@@ -959,6 +1012,19 @@ function Preview({ E, secName, auName }: { E: Editor; secName: string; auName: s
                 </div>
                 {b.cap && <figcaption className="mt-1 font-sans text-xs text-[#5b6470]">{b.cap}</figcaption>}
               </figure>
+            )
+          if (b.t === 'poll' && b.q)
+            return (
+              <div key={b.id} className={cn(box, 'px-3.5 py-3 font-sans')}>
+                <b className="mb-2 block font-serif text-[17px]">{b.q}</b>
+                {(b.opts ?? [])
+                  .filter(Boolean)
+                  .map((o, j) => (
+                    <div key={j} className="mb-1.5 rounded border border-[#ddd5c7] bg-white px-3 py-2 text-[13px]">
+                      {o}
+                    </div>
+                  ))}
+              </div>
             )
           if (b.t === 'sum' && b.v)
             return (
@@ -1206,8 +1272,98 @@ function PublishPanel({
           <span>Marcar como Última hora</span>
           <Switch checked={E.flash} onChange={(v) => change({ flash: v })} />
         </Row2>
+        <Row2>
+          <span>
+            Cobertura en vivo
+            <span className={cn(hint, 'block')}>Muestra «EN VIVO» y actualizaciones que aparecen solas</span>
+          </span>
+          <Switch checked={E.live} onChange={(v) => change({ live: v })} />
+        </Row2>
+        {E.live && <LiveDesk id={E.id} />}
       </div>
     </>
+  )
+}
+
+/* ---------- cobertura en vivo ---------- */
+
+/** Escribir y quitar entradas del directo. Se publican al momento, aparte del guardado de la nota. */
+function LiveDesk({ id }: { id: string | null }) {
+  const { call, toast } = useAdmin()
+  const [list, setList] = useState<AdminLiveUpdate[] | null>(null)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [important, setImportant] = useState(false)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!id) return
+    listLiveUpdates(id).then((r) => setList(r.ok ? r.data : []))
+  }, [id])
+  if (!id) return <p className={cn(hint, 'mt-2')}>Escribe algo en la nota para guardarla; después podrás añadir actualizaciones.</p>
+  return (
+    <Card className="mt-2 grid gap-2 p-3">
+      <b className="flex items-center gap-2 text-[13px]">
+        <span className="size-2 animate-pulse rounded-full bg-eg-accent" />
+        Actualizaciones del directo
+      </b>
+      <input className={inp} placeholder="Titular corto (opcional)" aria-label="Titular de la actualización" maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <textarea className={ta} rows={3} placeholder="Qué está pasando ahora" aria-label="Texto de la actualización" maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} />
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="checkbox" className="size-4 accent-eg-accent" checked={important} onChange={(e) => setImportant(e.target.checked)} />
+          Destacada
+        </label>
+        <span className="flex-1" />
+        <B
+          v="acc"
+          sm
+          disabled={busy || body.trim().length < 2}
+          onClick={async () => {
+            setBusy(true)
+            const r = await call(addLiveUpdate(id, { title, body, important }))
+            setBusy(false)
+            if (!r) return
+            setList((l) => [r, ...(l ?? [])])
+            setTitle('')
+            setBody('')
+            setImportant(false)
+            toast('Actualización publicada')
+          }}
+        >
+          {busy ? 'Publicando…' : 'Publicar actualización'}
+        </B>
+      </div>
+      <span className={hint}>Sale al instante en la nota publicada; los lectores la ven aparecer sin recargar.</span>
+      {list === null ? (
+        <span className={hint}>Cargando…</span>
+      ) : (
+        <ol className="m-0 grid max-h-[320px] list-none gap-2 overflow-auto p-0">
+          {list.map((u) => (
+            <li key={u.id} className={cn('rounded-lg border border-eg-rule p-2.5 text-[13px]', u.important && 'border-eg-accent')}>
+              <div className="flex items-center gap-2">
+                <b className="text-eg-accent">{hm(u.at)}</b>
+                <span className={sub}>{u.by}</span>
+                <span className="flex-1" />
+                <B
+                  v="ghost"
+                  ic
+                  sm
+                  aria-label="Borrar actualización"
+                  onClick={async () => {
+                    if ((await call(deleteLiveUpdate(u.id))) === undefined) return
+                    setList((l) => l?.filter((x) => x.id !== u.id) ?? null)
+                  }}
+                >
+                  <I n="trash" />
+                </B>
+              </div>
+              {u.title && <b className="block">{u.title}</b>}
+              <p className="m-0 line-clamp-3 whitespace-pre-line">{u.body}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   )
 }
 

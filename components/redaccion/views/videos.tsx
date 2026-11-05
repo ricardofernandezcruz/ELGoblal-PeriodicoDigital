@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { deleteChannel, deleteVideo, saveChannel, saveVideo, setVideoStatus, updateChannels } from '@/app/redaccion/video-actions'
+import { deleteChannel, deleteVideo, restoreVideo, saveChannel, saveVideo, setVideoStatus, updateChannels } from '@/app/redaccion/video-actions'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
 import { fd, num, type AdminChannel, type AdminVideo } from '../data'
@@ -42,7 +42,7 @@ export function VideosView() {
 /* ---------- Videos propios ---------- */
 
 function OwnVideos() {
-  const { videos, setVideos, dialog, closeDialog, call, toast, can } = useAdmin()
+  const { videos: all, setVideos, dialog, closeDialog, call, toast, can } = useAdmin()
   const publisher = can('article.publish')
 
   const toggle = async (v: AdminVideo) => {
@@ -55,8 +55,11 @@ function OwnVideos() {
   const remove = (v: AdminVideo) =>
     dialog(
       <>
-        <DlgTitle>Eliminar «{v.title}»</DlgTitle>
-        <p className="text-sm text-eg-muted">Desaparece del sitio y del panel. El archivo subido no se borra del almacenamiento.</p>
+        <DlgTitle>Mandar «{v.title}» a la papelera</DlgTitle>
+        <p className="text-sm text-eg-muted">
+          Sale del sitio al momento. Puedes restaurarlo durante 30 días; después se borra del todo
+          {v.fileUrl ? ', archivo incluido' : ''}.
+        </p>
         <DlgRow>
           <B v="out" onClick={closeDialog}>
             Cancelar
@@ -65,16 +68,26 @@ function OwnVideos() {
             v="acc"
             onClick={async () => {
               closeDialog()
-              if ((await call(deleteVideo(v.id))) === undefined) return
-              setVideos((l) => l.filter((x) => x.id !== v.id))
-              toast('Video eliminado')
+              const r = await call(deleteVideo(v.id))
+              if (!r) return
+              setVideos((l) => l.map((x) => (x.id === r.id ? r : x)))
+              toast('Video enviado a la papelera')
             }}
           >
-            Eliminar video
+            Mandar a la papelera
           </B>
         </DlgRow>
       </>,
     )
+
+  const restore = async (v: AdminVideo) => {
+    const r = await call(restoreVideo(v.id))
+    if (!r) return
+    setVideos((l) => l.map((x) => (x.id === r.id ? r : x)))
+    toast('Video restaurado como borrador')
+  }
+  const trash = all.filter((v) => v.deletedAt)
+  const videos = all.filter((v) => !v.deletedAt)
 
   return (
     <>
@@ -135,6 +148,29 @@ function OwnVideos() {
         </div>
       ) : (
         <Empty title="Todavía no hay videos de la redacción">Sube un archivo o pega un enlace de YouTube con «Nuevo video».</Empty>
+      )}
+      {trash.length > 0 && (
+        <details className="mt-6 rounded-xl border border-eg-rule bg-eg-bg">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+            Papelera ({trash.length}) <span className={cn(sub, 'font-normal')}>· se vacía sola a los 30 días</span>
+          </summary>
+          <div className="grid gap-2 border-t border-eg-rule p-3">
+            {trash.map((v) => (
+              <div key={v.id} className="flex items-center gap-3">
+                <span className="h-10 w-16 flex-none overflow-hidden rounded bg-black">{v.poster && <ArtImg src={v.poster} className="opacity-70" />}</span>
+                <span className="min-w-0 flex-1">
+                  <b className="line-clamp-1 text-sm">{v.title}</b>
+                  <span className={sub}>Se borra del todo el {fd(new Date(new Date(v.deletedAt!).getTime() + 30 * 864e5))}</span>
+                </span>
+                {publisher && (
+                  <B v="out" sm onClick={() => restore(v)}>
+                    Restaurar
+                  </B>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </>
   )
@@ -371,7 +407,7 @@ function VideoEditor({ video }: { video?: AdminVideo }) {
       {library && (
         <div className="mt-4 max-h-72 overflow-auto rounded-lg border border-eg-rule p-3">
           <MediaGrid
-            items={media}
+            items={media.filter((m) => !m.d)}
             onPick={(m) => {
               setPosterId(m.id)
               setLibrary(false)

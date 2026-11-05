@@ -11,8 +11,11 @@ import type { MenuItem } from '@/components/portada/site-header'
 import type { ArticleBlock } from '@/db/schema'
 import type { Card, FullArticle } from '@/lib/queries'
 import { formatDate } from '@/lib/site'
+import { trackReading } from '@/lib/reading'
 import { cn } from '@/lib/utils'
+import { LiveBadge, LiveFeed, Poll, QuoteShare, whatsappUrl, WhatsAppIcon } from './article-extras'
 import { SiteChrome } from './chrome'
+import { SaveButton } from './saved'
 import { TimeAgo } from './time-ago'
 
 const SIZES = [18, 20, 22],
@@ -55,7 +58,18 @@ function embed(u: string): string | null {
 
 type Group = ArticleBlock | { t: 'gal'; id: string; im: Extract<ArticleBlock, { t: 'img' }>[] }
 
-function Body({ blocks, heroSrc }: { blocks: ArticleBlock[]; heroSrc: string | null }) {
+/** Pie de foto con el crédito de la imagen («Foto: …») al final. */
+function Caption({ cap, credit, className }: { cap?: string; credit?: string; className?: string }) {
+  if (!cap && !credit) return null
+  return (
+    <figcaption className={cn('mt-2 text-[13px] text-eg-muted', className)}>
+      {cap}
+      {credit && <span className="ml-1.5 text-[11px] tracking-[.04em] uppercase opacity-80">{credit}</span>}
+    </figcaption>
+  )
+}
+
+function Body({ articleId, blocks, heroSrc, credits }: { articleId: string; blocks: ArticleBlock[]; heroSrc: string | null; credits: Record<string, string> }) {
   // La primera imagen ya se muestra como portada; las imágenes seguidas forman galería.
   let skipped = false
   const groups: Group[] = []
@@ -77,6 +91,8 @@ function Body({ blocks, heroSrc }: { blocks: ArticleBlock[]; heroSrc: string | n
         switch (b.t) {
           case 'p':
             return <p key={b.id}>{b.v}</p>
+          case 'poll':
+            return <Poll key={b.id} articleId={articleId} block={b} />
           case 'sub':
             return b.v.trim() ? (
               <h2 key={b.id} className="mt-[1.6em] mb-[.5em] font-serif text-[28px] leading-[1.2] font-medium">
@@ -135,15 +151,18 @@ function Body({ blocks, heroSrc }: { blocks: ArticleBlock[]; heroSrc: string | n
             return b.im.length > 1 ? (
               <div key={b.id} className={cn('mb-[1.1em] grid gap-1.5', b.im.length > 2 ? 'grid-cols-3 max-[600px]:grid-cols-2' : 'grid-cols-2')}>
                 {b.im.map((im) => (
-                  <div key={im.id} className="eg-photo aspect-[4/3] overflow-hidden rounded-[2px] bg-eg-surface">
+                  <div key={im.id} className="eg-photo relative aspect-[4/3] overflow-hidden rounded-[2px] bg-eg-surface">
                     <ArtImg src={im.src} alt={im.alt} />
+                    {credits[im.src] && (
+                      <span className="absolute right-1 bottom-1 max-w-[90%] truncate rounded-[2px] bg-black/60 px-1 text-[10px] text-white">{credits[im.src]}</span>
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
               <figure key={b.id} className="mx-0 mb-[1.1em]">
                 <ArtFrame src={b.im[0].src} alt={b.im[0].alt} />
-                {b.im[0].cap && <figcaption className="mt-2 text-[13px] text-eg-muted">{b.im[0].cap}</figcaption>}
+                <Caption cap={b.im[0].cap} credit={credits[b.im[0].src]} />
               </figure>
             )
           default:
@@ -162,12 +181,24 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
   const [listening, setListening] = useState(false)
   const [si, setSi] = useState(1)
   const [focus, setFocus] = useState(false)
+  const lastTrack = useRef(0)
+  const item = { id: a.id, title: a.title, href: `/${a.secSlug}/${a.slug}`, img: a.hero?.src ?? null, sec: a.sec }
+  // La URL completa solo se conoce en el navegador; antes se usa la ruta.
+  const [url, setUrl] = useState(item.href)
+  useEffect(() => setUrl(location.origin + item.href), [item.href])
+  const shareText = `${a.title}\n${url}`
 
   useEffect(() => {
     const on = () => {
       const r = ref.current!.getBoundingClientRect(),
         h = r.height - innerHeight * 0.6
-      setProg(Math.max(0, Math.min(100, ((-r.top + innerHeight * 0.3) / h) * 100)))
+      const p = Math.max(0, Math.min(100, ((-r.top + innerHeight * 0.3) / h) * 100))
+      setProg(p)
+      // «Continúa leyendo»: se guarda el avance como mucho cada 2 s.
+      if (Date.now() - lastTrack.current > 2000 && p > 3) {
+        lastTrack.current = Date.now()
+        trackReading(item, p)
+      }
     }
     on()
     addEventListener('scroll', on, { passive: true })
@@ -226,6 +257,10 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
         >
           <Icon name="share" size={18} round={false} />
         </button>
+        <a className={cn(tool, 'text-[#1f8f4e]')} aria-label="Compartir por WhatsApp" href={whatsappUrl(shareText)} target="_blank" rel="noopener">
+          <WhatsAppIcon />
+        </a>
+        <SaveButton item={item} className={cn(tool, 'aria-pressed:bg-transparent aria-pressed:text-eg-accent')} />
         <button className={tool} aria-pressed={listening} aria-label="Escuchar" onClick={listen}>
           <Icon name="volume" size={18} round={false} />
         </button>
@@ -246,34 +281,60 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
       </aside>
 
       <article ref={ref} className="mx-auto max-w-[700px] px-5 pt-10">
-        <Link href={'/' + a.secSlug} className="text-xs font-semibold text-eg-accent">
-          {a.sec}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {a.live && <LiveBadge />}
+          <Link href={'/' + a.secSlug} className="text-xs font-semibold text-eg-accent">
+            {a.sec}
+          </Link>
+          {a.live && a.updates[0] && (
+            <a href="#en-vivo" className="text-xs text-eg-muted hover:text-eg-ink">
+              {a.updates.length} actualizaciones · última <TimeAgo date={a.updates[0].at} /> ↓
+            </a>
+          )}
+        </div>
         <h1 className="mt-2.5 mb-3.5 font-serif text-[clamp(34px,5vw,52px)] leading-[1.08] font-medium tracking-[-.02em] break-words">{a.title}</h1>
         {a.lead && <p className="mb-5 font-serif text-[22px] leading-[1.45] text-eg-muted max-[600px]:text-[19px]">{a.lead}</p>}
         <div className="flex items-center gap-3 border-y border-eg-rule py-3.5 text-sm text-eg-muted">
           <div className="grid size-[42px] flex-none place-items-center overflow-hidden rounded-full bg-eg-surface font-serif text-lg text-eg-ink">
             {a.auImg ? <ArtImg src={a.auImg} alt="" /> : (a.au ?? 'E').slice(0, 1)}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <b className="block text-eg-ink">{a.au ?? 'Redacción'}</b>
             {formatDate(a.date, true)} · {minutes} min de lectura
           </div>
+          <a
+            href={whatsappUrl(shareText)}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex min-h-10 flex-none items-center gap-1.5 rounded-full bg-[#1f8f4e] px-3.5 text-[13px] font-semibold text-white hover:brightness-110"
+          >
+            <WhatsAppIcon size={16} />
+            <span className="max-[400px]:hidden">Compartir</span>
+          </a>
+          <SaveButton
+            item={item}
+            className="inline-flex min-h-10 flex-none items-center gap-1.5 rounded-full border border-eg-rule px-3.5 text-[13px] font-semibold text-eg-ink hover:bg-eg-surface aria-pressed:border-eg-accent aria-pressed:text-eg-accent max-[520px]:px-2.5 [&>span]:max-[520px]:hidden"
+            label
+          />
         </div>
         {a.hero && (
           <figure className="m-0">
             <ArtFrame src={a.hero.src} alt={a.hero.alt} className="mt-7 mb-2" />
             {(() => {
               const cap = a.blocks.find((b): b is Extract<ArticleBlock, { t: 'img' }> => b.t === 'img' && b.src === a.hero!.src)?.cap
-              return cap ? <figcaption className="mb-7 text-[13px] text-eg-muted">{cap}</figcaption> : <div className="mb-7" />
+              const credit = a.credits[a.hero!.src]
+              return cap || credit ? <Caption cap={cap} credit={credit} className="mt-0 mb-7" /> : <div className="mb-7" />
             })()}
           </figure>
         )}
         {!a.hero && <div className="mb-7" />}
 
         <div ref={txt} className="[&>p]:mb-[1.1em] [&>p]:font-serif [&>p]:text-[length:var(--fs)] [&>p]:leading-[1.65] [&>p]:break-words [&>p]:whitespace-pre-line">
-          <Body blocks={a.blocks} heroSrc={a.hero?.src ?? null} />
+          <Body articleId={a.id} blocks={a.blocks} heroSrc={a.hero?.src ?? null} credits={a.credits} />
         </div>
+        <QuoteShare container={txt} title={a.title} />
+
+        {a.live && <LiveFeed articleId={a.id} initial={a.updates} />}
 
         {a.tags.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2">

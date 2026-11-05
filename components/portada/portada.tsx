@@ -6,13 +6,16 @@ import { subscribe } from '@/app/actions'
 import { ArtFrame } from '@/components/eg/art'
 import { Chip, Chips } from '@/components/eg/chip'
 import { useToast } from '@/components/eg/toast'
+import { LiveBadge } from '@/components/site/article-extras'
 import { SiteChrome } from '@/components/site/chrome'
+import { ContinueReading } from '@/components/site/saved'
 import { TimeAgo } from '@/components/site/time-ago'
 import { VideoBand, type VideoHubData } from '@/components/site/video'
 import type { Card } from '@/lib/queries'
 import { formatTime } from '@/lib/site'
 import { cn } from '@/lib/utils'
 import type { MenuItem } from './site-header'
+import { buildStories, Stories } from './stories'
 
 /* Clases tipográficas del prototipo */
 export const tag = 'mt-3.5 mb-1.5 block text-xs font-semibold text-eg-accent'
@@ -25,6 +28,16 @@ const card = 'relative mb-5 border-b border-eg-rule pb-5 last:border-0'
 const btn = 'rounded border-0 bg-eg-ink px-4 py-2.5 text-sm font-semibold text-eg-bg hover:opacity-[.88] disabled:opacity-60'
 export const secH = 'mb-[22px] flex flex-wrap items-baseline justify-between gap-3 border-b-2 border-eg-ink pb-2.5'
 export const secTitle = 'm-0 font-serif text-[30px] font-medium'
+
+/** Antetítulo de una tarjeta: sección y, si hay cobertura en vivo, la etiqueta EN VIVO. */
+export function Kicker({ c, className }: { c: Card; className?: string }) {
+  return (
+    <span className={cn(tag, 'flex items-center gap-2', className)}>
+      {c.live && <LiveBadge className="px-1.5 py-[3px] text-[10px]" />}
+      {c.sec}
+    </span>
+  )
+}
 
 export type FrontPage = {
   breaking: { on: boolean; text: string }
@@ -42,6 +55,15 @@ export function Portada({ data }: { data: FrontPage }) {
     <SiteChrome menu={data.menu} breaking={data.breaking}>
       <main className="mx-auto max-w-[1240px] px-5 pt-7">
         <LiveStrip updatedAt={data.updatedAt} />
+        {data.hero && (
+          <Stories
+            stories={buildStories(
+              [data.hero, ...data.secondary, ...data.latest],
+              [...data.videos.own.filter((v) => v.vertical), ...data.videos.channels.flatMap((c) => c.shorts.slice(0, 2))],
+            )}
+          />
+        )}
+        <ContinueReading className="mt-4" />
         {data.hero ? (
           <>
             <Hero hero={data.hero} secondary={data.secondary} mostRead={data.mostRead} />
@@ -97,7 +119,7 @@ function Hero({ hero, secondary, mostRead }: { hero: Card; secondary: Card[]; mo
       <article className={cn(card, col, 'border-b-0')}>
         <Link href={hero.href} className="group">
           <Img c={hero} className="aspect-[16/10]" />
-          <span className={tag}>{hero.sec}</span>
+          <Kicker c={hero} />
           <h1 className={cn('mb-3.5 font-serif text-[clamp(34px,4.6vw,60px)] leading-[1.04] font-medium tracking-[-.02em]', hover)}>{hero.title}</h1>
           {hero.lead && <p className={lead}>{hero.lead}</p>}
         </Link>
@@ -112,7 +134,7 @@ function Hero({ hero, secondary, mostRead }: { hero: Card; secondary: Card[]; mo
           <article key={c.id} className={card}>
             <Link href={c.href} className="group">
               <Img c={c} className="mb-1.5" />
-              <span className={tag}>{c.sec}</span>
+              <Kicker c={c} />
               <h2 className={h2}>{c.title}</h2>
               {c.lead && <p className={cn(lead, 'text-base')}>{c.lead}</p>}
             </Link>
@@ -153,7 +175,7 @@ export function CardMedium({ c }: { c: Card }) {
     <article className={cn(card, 'border-0')}>
       <Link href={c.href} className="group">
         <Img c={c} />
-        <span className={tag}>{c.sec}</span>
+        <Kicker c={c} />
         <h3 className={h3}>{c.title}</h3>
       </Link>
       <div className={meta}>

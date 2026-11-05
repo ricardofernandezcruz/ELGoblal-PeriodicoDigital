@@ -30,6 +30,8 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  // Al añadirla a la pantalla de inicio del iPhone se abre como app, sin barra del navegador.
+  appleWebApp: { capable: true, title: 'El Global', statusBarStyle: 'default' },
 }
 
 export const viewport: Viewport = {

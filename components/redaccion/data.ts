@@ -25,6 +25,8 @@ export type Editor = {
   com: boolean
   news: boolean
   flash: boolean
+  /** Cobertura en vivo. */
+  live: boolean
   tab: 'pv' | 'pb' | 'ql'
   view: 'desk' | 'mob'
   status: string
@@ -71,8 +73,17 @@ export const VIEWS: Record<View, [string, string]> = {
 }
 
 /* Editor: tipos de bloque */
-export const LBL: Record<BlockType, string> = { p: 'Texto', sub: 'Subtítulo', img: 'Imagen', quote: 'Cita', video: 'Video', data: 'Dato destacado', sum: 'En 30 segundos' }
-export const BI = { p: 'type', sub: 'hash', img: 'image', quote: 'quote', video: 'video', data: 'chart', sum: 'list' } as const
+export const LBL: Record<BlockType, string> = {
+  p: 'Texto',
+  sub: 'Subtítulo',
+  img: 'Imagen',
+  quote: 'Cita',
+  video: 'Video',
+  data: 'Dato destacado',
+  sum: 'En 30 segundos',
+  poll: 'Encuesta',
+}
+export const BI = { p: 'type', sub: 'hash', img: 'image', quote: 'quote', video: 'video', data: 'chart', sum: 'list', poll: 'poll' } as const
 export const BH: Record<BlockType, string> = {
   p: 'Párrafo normal',
   sub: 'Divide la nota en partes',
@@ -81,10 +92,12 @@ export const BH: Record<BlockType, string> = {
   video: 'Horizontal o vertical',
   data: 'Una cifra grande',
   sum: 'Resumen de 3 puntos',
+  poll: 'Los lectores votan',
 }
 
 export const mk = (t: BlockType, o: Partial<Block> = {}): Block => ({
   ...(t === 'p' || t === 'sub' || t === 'sum' || t === 'quote' ? { v: '' } : {}),
+  ...(t === 'poll' ? { q: '', opts: ['', ''] } : {}),
   ...o,
   id: crypto.randomUUID().slice(0, 8),
   t,
@@ -115,6 +128,7 @@ export const emptyEditor = (o: Partial<Editor> = {}): Editor => ({
   com: true,
   news: false,
   flash: false,
+  live: false,
   tab: 'pv',
   view: 'desk',
   status: 'Listo para escribir',

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { CardMedium, h3, Img, lead, meta, secH, secTitle, tag } from '@/components/portada/portada'
+import { CardMedium, h3, Img, Kicker, lead, meta, secH, secTitle } from '@/components/portada/portada'
 import type { MenuItem } from '@/components/portada/site-header'
 import type { Card } from '@/lib/queries'
 import { cn } from '@/lib/utils'
@@ -24,7 +24,7 @@ export function SectionView({ section, cards, menu }: { section: { name: string;
                 <Img c={first} />
               </Link>
               <div>
-                <span className={tag}>{first.sec}</span>
+                <Kicker c={first} />
                 <Link href={first.href} className="group">
                   <h2 className={cn(h3, 'text-[clamp(28px,3.4vw,42px)] leading-[1.08] tracking-[-.02em]')}>{first.title}</h2>
                 </Link>

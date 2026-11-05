@@ -2,7 +2,8 @@ import 'server-only'
 import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { articles, authors, comments, media, sections, settings, subscribers, user, videoChannels, videos, type HomeSettings } from '@/db/schema'
-import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload } from './newsroom-types'
+import { mediaUsage } from './media-usage'
+import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload, MediaUse } from './newsroom-types'
 import { UI_STATUS } from './newsroom-types'
 
 export const DEFAULT_HOME: HomeSettings = { featured: [null, null, null], breaking: { on: false, text: '' } }
@@ -74,7 +75,16 @@ export async function getNews(ids?: string[]): Promise<AdminNews[]> {
   return rows.map(toNews)
 }
 
-export const toMedia = (m: typeof media.$inferSelect): AdminMedia => ({ id: m.id, s: m.key, n: m.name, a: m.alt })
+export const toMedia = (m: typeof media.$inferSelect, use: MediaUse[] = []): AdminMedia => ({
+  id: m.id,
+  s: m.key,
+  n: m.name,
+  a: m.alt,
+  c: m.credit,
+  d: m.deletedAt?.toISOString() ?? null,
+  by: m.createdBy,
+  use,
+})
 
 export async function getHome(): Promise<AdminHome> {
   const [row] = await db.select().from(settings).where(eq(settings.key, 'home'))
@@ -85,7 +95,7 @@ export async function getAdminData(): Promise<AdminData> {
   const monthStart = new Date()
   monthStart.setDate(1)
   monthStart.setHours(0, 0, 0, 0)
-  const [vids, chans] = await Promise.all([getAdminVideos(), getAdminChannels()])
+  const [vids, chans, usage] = await Promise.all([getAdminVideos(), getAdminChannels(), mediaUsage()])
   const [news, med, com, secs, auths, team, home, [pub], [pubMonth], [subs], [reads]] = await Promise.all([
     getNews(),
     db.select().from(media).orderBy(desc(media.createdAt)),
@@ -109,7 +119,7 @@ export async function getAdminData(): Promise<AdminData> {
   ])
   return {
     news,
-    media: med.map(toMedia),
+    media: med.map((m) => toMedia(m, usage.get(m.id))),
     comments: com.map((c) => ({ ...c, at: c.at.toISOString() })),
     sections: secs.map((s) => ({ id: s.id, name: s.name, slug: s.slug, inMenu: s.inMenu })),
     authors: auths,
@@ -139,6 +149,7 @@ export async function getEditorPayload(id: string): Promise<EditorPayload | null
     com: a.allowComments,
     news: a.inNewsletter,
     flash: a.breaking,
+    live: a.live,
     createdBy: a.createdBy,
   }
 }
@@ -159,6 +170,7 @@ export const toAdminVideo = (v: typeof videos.$inferSelect, poster: string | nul
   status: v.status,
   publishedAt: v.publishedAt?.toISOString() ?? null,
   views: v.views,
+  deletedAt: v.deletedAt?.toISOString() ?? null,
 })
 
 export async function getAdminVideos(ids?: string[]): Promise<AdminVideo[]> {

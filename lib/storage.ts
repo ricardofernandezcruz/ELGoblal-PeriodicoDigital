@@ -73,3 +73,20 @@ export async function presignUpload(key: string): Promise<{ uploadUrl: string; p
   const signed = await s.client.sign(new Request(`${s.endpoint}/${key}?X-Amz-Expires=3600`, { method: 'PUT' }), { aws: { signQuery: true } })
   return { uploadUrl: signed.url, publicUrl: `${s.publicUrl}/${key}` }
 }
+
+/** Borra un archivo subido por nosotros a partir de su URL pública. Las URL ajenas (ilustraciones,
+    YouTube) se ignoran. Devuelve false si el almacenamiento no lo pudo borrar. */
+export async function deleteObject(url: string): Promise<boolean> {
+  const s = r2()
+  if (s && url.startsWith(s.publicUrl + '/')) {
+    const res = await s.client.fetch(`${s.endpoint}/${url.slice(s.publicUrl.length + 1)}`, { method: 'DELETE' }).catch(() => null)
+    return !!res && (res.ok || res.status === 404)
+  }
+  if (url.startsWith('/uploads/') && process.env.NODE_ENV !== 'production') {
+    const { rm } = await import('node:fs/promises')
+    const path = await import('node:path')
+    const file = path.join(process.cwd(), 'public', 'uploads', path.normalize(url.slice('/uploads/'.length)).replace(/^(\.\.[/\\])+/, ''))
+    await rm(file, { force: true })
+  }
+  return true
+}

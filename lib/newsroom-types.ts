@@ -20,7 +20,7 @@ export type AdminNews = {
   createdBy: string | null
 }
 
-export type BlockType = 'p' | 'sub' | 'img' | 'quote' | 'video' | 'data' | 'sum'
+export type BlockType = 'p' | 'sub' | 'img' | 'quote' | 'video' | 'data' | 'sum' | 'poll'
 export type Block = {
   id: string
   t: BlockType
@@ -34,6 +34,9 @@ export type Block = {
   vert?: boolean
   n?: string
   l?: string
+  /** Encuesta: pregunta y opciones. */
+  q?: string
+  opts?: string[]
 }
 
 export type EditorPayload = {
@@ -51,11 +54,15 @@ export type EditorPayload = {
   com: boolean
   news: boolean
   flash: boolean
+  live: boolean
   createdBy: string | null
 }
 
 export type AdminVersion = { id: string; at: string; manual: boolean; title: string; blocks: number }
-export type AdminMedia = { id: string; s: string; n: string; a: string }
+/** Dónde aparece una imagen. live = el público la ve (nota publicada o programada, video publicado, foto de firma). */
+export type MediaUse = { k: 'art' | 'vid' | 'au'; id: string; t: string; live: boolean }
+/** s = URL o ilustración · n = nombre · a = texto alternativo · c = crédito · d = en la papelera desde · by = quién la subió */
+export type AdminMedia = { id: string; s: string; n: string; a: string; c: string; d: string | null; by: string | null; use: MediaUse[] }
 export type AdminComment = { id: string; who: string; text: string; on: string; spam: boolean; at: string }
 export type AdminSection = { id: string; name: string; slug: string; inMenu: boolean }
 export type AdminAuthor = { id: string; name: string }
@@ -94,6 +101,8 @@ export type AdminVideo = {
   status: 'draft' | 'published'
   publishedAt: string | null
   views: number
+  /** En la papelera desde esta fecha. */
+  deletedAt: string | null
 }
 
 export type AdminChannel = {
