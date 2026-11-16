@@ -12,6 +12,7 @@ import type { ArticleBlock } from '@/db/schema'
 import type { Card, FullArticle } from '@/lib/queries'
 import { formatDate } from '@/lib/site'
 import { trackReading } from '@/lib/reading'
+import { paragraphHtml, plainText } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import { LiveBadge, LiveFeed, Poll, QuoteShare, whatsappUrl, WhatsAppIcon } from './article-extras'
 import { SiteChrome } from './chrome'
@@ -83,14 +84,14 @@ function Body({ articleId, blocks, heroSrc, credits }: { articleId: string; bloc
       const last = groups[groups.length - 1]
       if (last?.t === 'gal') last.im.push(b)
       else groups.push({ t: 'gal', id: 'g' + b.id, im: [b] })
-    } else if (!(b.t === 'p' && !b.v.trim())) groups.push(b)
+    } else if (!(b.t === 'p' && !plainText(b.v, b.h).trim())) groups.push(b)
   }
   return (
     <>
       {groups.map((b) => {
         switch (b.t) {
           case 'p':
-            return <p key={b.id}>{b.v}</p>
+            return <p key={b.id} dangerouslySetInnerHTML={{ __html: paragraphHtml(b.v, b.h) }} />
           case 'poll':
             return <Poll key={b.id} articleId={articleId} block={b} />
           case 'sub':

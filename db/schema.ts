@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -73,7 +74,8 @@ export const articleStatus = pgEnum('article_status', ['draft', 'review', 'sched
 
 /** Bloques del editor, guardados en orden dentro de la nota. */
 export type ArticleBlock =
-  | { id: string; t: 'p'; v: string }
+  /** h: el texto lleva formato (HTML limpio, ver lib/rich-text). Sin h, texto plano. */
+  | { id: string; t: 'p'; v: string; h?: boolean }
   | { id: string; t: 'sub'; v: string }
   | { id: string; t: 'img'; mediaId: string | null; src: string; alt: string; cap?: string }
   | { id: string; t: 'quote'; v: string; who?: string }
@@ -118,6 +120,21 @@ export const articles = pgTable(
     index('articles_publish_at_idx').on(t.publishAt).where(sql`${t.status} = 'scheduled'`),
     check('articles_scheduled_has_date', sql`${t.status} <> 'scheduled' OR ${t.publishAt} IS NOT NULL`),
   ],
+)
+
+/** Secciones adicionales de una nota: aparece también en ellas. La principal (articles.sectionId)
+    decide su dirección y la etiqueta de las tarjetas. */
+export const articleSections = pgTable(
+  'article_sections',
+  {
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => articles.id, { onDelete: 'cascade' }),
+    sectionId: uuid('section_id')
+      .notNull()
+      .references(() => sections.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.articleId, t.sectionId] }), index('article_sections_section_idx').on(t.sectionId)],
 )
 
 /** Entradas de una cobertura en vivo (la más reciente arriba). */
@@ -217,6 +234,13 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   p256dh: text('p256dh').notNull(),
   auth: text('auth').notNull(),
   createdAt: created(),
+})
+
+/** Límites de uso de los formularios públicos (comentarios, votos, suscripción…), por IP cifrada. */
+export const rateLimits = pgTable('rate_limits', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
 })
 
 /* ---------- Portada y ajustes del sitio ---------- */

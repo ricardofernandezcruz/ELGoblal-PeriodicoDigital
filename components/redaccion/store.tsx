@@ -215,6 +215,7 @@ export function AdminProvider({ me, initial, children }: { me: CurrentUser; init
           title: p.title,
           lead: p.lead,
           sec: p.sectionId,
+          secs: p.extraSections,
           au: p.authorId,
           tags: p.tags,
           slug: p.slug,

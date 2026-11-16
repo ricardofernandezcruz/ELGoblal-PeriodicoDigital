@@ -2,8 +2,9 @@ import 'server-only'
 import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/db'
-import { articles, authors, comments, liveUpdates, media, sections, type ArticleBlock } from '@/db/schema'
+import { articles, articleSections, authors, comments, liveUpdates, media, sections, type ArticleBlock } from '@/db/schema'
 import { getHome } from './newsroom'
+import { plainText } from './rich-text'
 
 /* Consultas del sitio público. Una nota programada cuenta como publicada en cuanto llega su hora,
    aunque el cron todavía no haya cambiado su estado. */
@@ -105,8 +106,14 @@ export async function getFrontPage() {
 export async function getSectionPage(slug: string) {
   const [sec] = await db.select().from(sections).where(eq(sections.slug, slug))
   if (!sec) return null
+  // Sus notas y las de otras secciones que también la eligieron.
   const list = await cards()
-    .where(and(isLive(), eq(articles.sectionId, sec.id)))
+    .where(
+      and(
+        isLive(),
+        or(eq(articles.sectionId, sec.id), inArray(articles.id, db.select({ id: articleSections.articleId }).from(articleSections).where(eq(articleSections.sectionId, sec.id)))),
+      ),
+    )
     .orderBy(desc(liveDate))
     .limit(30)
   return { section: { name: sec.name, slug: sec.slug }, cards: list.map(toCard), menu: await getMenu() }
@@ -252,7 +259,7 @@ export const readingMinutes = (a: Pick<FullArticle, 'title' | 'lead' | 'blocks'>
   Math.max(
     1,
     Math.ceil(
-      [a.title, a.lead, ...a.blocks.map((b) => ('v' in b ? b.v : '') + ' ' + ('cap' in b ? (b.cap ?? '') : ''))]
+      [a.title, a.lead, ...a.blocks.map((b) => ('v' in b ? plainText(b.v, b.t === 'p' && b.h) : '') + ' ' + ('cap' in b ? (b.cap ?? '') : ''))]
         .join(' ')
         .split(/\s+/)
         .filter(Boolean).length / 200,

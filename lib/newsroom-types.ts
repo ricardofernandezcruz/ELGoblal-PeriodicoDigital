@@ -25,6 +25,8 @@ export type Block = {
   id: string
   t: BlockType
   v?: string
+  /** El texto del párrafo lleva formato (HTML limpio: <b>, <i>, <u>, <br>). */
+  h?: boolean
   who?: string
   mediaId?: string | null
   src?: string
@@ -44,6 +46,8 @@ export type EditorPayload = {
   title: string
   lead: string
   sectionId: string
+  /** Secciones adicionales donde también aparece. */
+  extraSections: string[]
   authorId: string | null
   tags: string[]
   slug: string

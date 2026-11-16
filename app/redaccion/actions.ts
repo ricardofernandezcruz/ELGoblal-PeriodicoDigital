@@ -8,13 +8,14 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
 import { ROLES } from '@/db/auth-schema'
-import { account, articles, articleVersions, auditLog, authors, comments, media, sections, liveUpdates, session, settings, subscribers, twoFactor, user, videos, type ArticleBlock } from '@/db/schema'
+import { account, articles, articleSections, articleVersions, auditLog, authors, comments, media, sections, liveUpdates, session, settings, subscribers, twoFactor, user, videos, type ArticleBlock } from '@/db/schema'
 import { EmailError, emailReady, sendEmail } from '@/lib/email'
 import { imageKey, MAX_IMAGE, sniffImage } from '@/lib/image'
 import { buildDigest, digestEmail } from '@/lib/newsletter'
 import { mediaUsage, unavailableMedia } from '@/lib/media-usage'
 import { getEditorPayload, getNews, slugify, toMedia } from '@/lib/newsroom'
 import { pushCount, PushError, pushReady, sendPush } from '@/lib/push'
+import { sanitizeInline } from '@/lib/rich-text'
 import { fetchRemoteImage, RemoteImageError } from '@/lib/remote-image'
 import { deleteObject, putObject, StorageError } from '@/lib/storage'
 import { DB_STATUS, type ActionResult, type AdminMedia, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type MediaUse, type Status } from '@/lib/newsroom-types'
@@ -47,6 +48,7 @@ const blockSchema = z.object({
   id: z.string().max(40),
   t: z.enum(['p', 'sub', 'img', 'quote', 'video', 'data', 'sum', 'poll']),
   v: str(20000).optional(),
+  h: z.boolean().optional(),
   who: str(200).optional(),
   mediaId: z.uuid().nullable().optional(),
   alt: str(400).optional(),
@@ -64,6 +66,7 @@ const saveSchema = z.object({
   title: str(200),
   lead: str(600),
   sectionId: z.uuid(),
+  extraSections: z.array(z.uuid()).max(3).default([]),
   authorId: z.uuid().nullable(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20),
   slug: str(80),
@@ -85,6 +88,9 @@ async function toStoredBlocks(blocks: z.infer<typeof blockSchema>[]): Promise<Ar
   for (const b of blocks) {
     switch (b.t) {
       case 'p':
+        // El formato se limpia aquí también: nunca se guarda HTML que no haya pasado por el filtro.
+        out.push(b.h ? { id: b.id, t: 'p', v: sanitizeInline(b.v ?? ''), h: true } : { id: b.id, t: 'p', v: b.v ?? '' })
+        break
       case 'sub':
       case 'sum':
         out.push({ id: b.id, t: b.t, v: b.v ?? '' })
@@ -178,6 +184,15 @@ export async function saveArticle(
     const [row] = existing
       ? await db.update(articles).set(values).where(eq(articles.id, existing.id)).returning()
       : await db.insert(articles).values({ ...values, createdBy: u.id }).returning()
+
+    // Secciones adicionales: se reemplazan por las elegidas (sin repetir la principal).
+    const extra = [...new Set(d.extraSections)].filter((s) => s !== d.sectionId)
+    const before = await db.select({ id: articleSections.sectionId }).from(articleSections).where(eq(articleSections.articleId, row.id))
+    const sectionsChanged = before.length !== extra.length || before.some((b) => !extra.includes(b.id))
+    if (sectionsChanged) {
+      await db.delete(articleSections).where(eq(articleSections.articleId, row.id))
+      if (extra.length) await db.insert(articleSections).values(extra.map((sectionId) => ({ articleId: row.id, sectionId })))
+    }
 
     // Versión: solo si el contenido cambió desde la última, o si se guardó a mano.
     const snapshot = { title: d.title, lead: d.lead, blocks, tags: values.tags }
@@ -289,6 +304,8 @@ export async function duplicateArticle(id: string): Promise<ActionResult<AdminNe
         updatedBy: u.id,
       })
       .returning()
+    const extra = await db.select({ sectionId: articleSections.sectionId }).from(articleSections).where(eq(articleSections.articleId, a.id))
+    if (extra.length) await db.insert(articleSections).values(extra.map((x) => ({ articleId: row.id, sectionId: x.sectionId })))
     return (await getNews([row.id]))[0]
   })
 }

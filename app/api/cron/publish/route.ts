@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { articles, auditLog, media, videos } from '@/db/schema'
 import { sendDailyDigest, sendPendingConfirmations } from '@/lib/newsletter'
+import { cleanRateLimits } from '@/lib/rate-limit'
 import { deleteObject } from '@/lib/storage'
 
 /* Publica las notas programadas cuya hora ya llegó. La llama Vercel Cron (o cualquier cron)
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
     return { sent: 0, skipped: 'error: ' + (e instanceof Error ? e.message : 'desconocido') }
   })
   const confirmations = await sendPendingConfirmations().catch((e) => (console.error('[boletin]', e), 0))
+  await cleanRateLimits().catch(() => null)
   const purged = await emptyTrash(new Date(now.getTime() - 30 * 864e5))
   return NextResponse.json({ published: due.length, newsletter, confirmations, purged })
 }

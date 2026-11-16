@@ -12,6 +12,7 @@ export type Editor = {
   title: string
   lead: string
   sec: string // id de sección
+  secs: string[] // secciones adicionales
   au: string | null // id de firma
   tags: string[]
   slug: string
@@ -116,6 +117,7 @@ export const emptyEditor = (o: Partial<Editor> = {}): Editor => ({
   title: '',
   lead: '',
   sec: '',
+  secs: [],
   au: null,
   tags: [],
   slug: '',

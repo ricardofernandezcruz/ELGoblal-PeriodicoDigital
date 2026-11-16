@@ -30,6 +30,8 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  // Antes del lanzamiento (sin ALLOW_INDEXING=1) los buscadores no deben indexar el sitio de pruebas.
+  robots: process.env.ALLOW_INDEXING === '1' ? undefined : { index: false, follow: false },
   // Al añadirla a la pantalla de inicio del iPhone se abre como app, sin barra del navegador.
   appleWebApp: { capable: true, title: 'El Global', statusBarStyle: 'default' },
 }

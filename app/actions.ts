@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { articles, comments, pollVotes, pushSubscriptions, subscribers, videos } from '@/db/schema'
 import { sendConfirmation } from '@/lib/newsletter'
+import { allow, LIMITS } from '@/lib/rate-limit'
 import { getLiveUpdateList, isArticleLive, searchCards, type Card, type LiveUpdate } from '@/lib/queries'
 
 type Result = { ok: true; message: string } | { ok: false; error: string }
@@ -14,6 +15,7 @@ export async function subscribe(email: string, topics: string[] = []): Promise<R
   const e = z.email().max(200).safeParse(email.trim().toLowerCase())
   if (!e.success) return { ok: false, error: email.trim() ? 'Escribe un correo válido, por ejemplo tu@correo.com' : 'Escribe tu correo para recibir el resumen' }
   const t = z.array(z.string().max(40)).max(10).catch([]).parse(topics)
+  if (!(await allow(LIMITS.subscribe))) return { ok: false, error: 'Recibimos varias suscripciones desde tu conexión. Inténtalo de nuevo en una hora.' }
   const [sub] = await db
     .insert(subscribers)
     .values({ email: e.data, topics: t })
@@ -43,6 +45,7 @@ export async function addComment(input: { articleId: string; name: string; body:
     })
     .safeParse(input)
   if (!d.success) return { ok: false, error: 'Escribe tu nombre y un comentario de al menos 3 caracteres.' }
+  if (!(await allow(LIMITS.comment))) return { ok: false, error: 'Enviaste varios comentarios seguidos. Espera unos minutos y vuelve a intentarlo.' }
   const [a] = await db.select({ allow: articles.allowComments }).from(articles).where(eq(articles.id, d.data.articleId))
   if (!a?.allow) return { ok: false, error: 'Los comentarios están cerrados en esta nota.' }
   await db.insert(comments).values({
@@ -57,26 +60,27 @@ export async function addComment(input: { articleId: string; name: string; body:
 
 export async function markHelpful(commentId: string): Promise<void> {
   const id = z.uuid().safeParse(commentId)
-  if (!id.success) return
+  if (!id.success || !(await allow(LIMITS.counter))) return
   await db.update(comments).set({ helpful: sql`${comments.helpful} + 1` }).where(eq(comments.id, id.data))
 }
 
 /** Cuenta una lectura (el navegador lo llama una vez por nota y sesión). */
 export async function registerRead(articleId: string): Promise<void> {
   const id = z.uuid().safeParse(articleId)
-  if (!id.success) return
+  if (!id.success || !(await allow(LIMITS.counter))) return
   await db.update(articles).set({ reads: sql`${articles.reads} + 1` }).where(eq(articles.id, id.data))
 }
 
 export async function search(q: string): Promise<Card[]> {
   const t = q.trim().slice(0, 80)
-  return t.length < 2 ? [] : searchCards(t)
+  if (t.length < 2 || !(await allow(LIMITS.search))) return []
+  return searchCards(t)
 }
 
 /** Cuenta una reproducción de un video de la redacción (una por video y sesión). */
 export async function registerVideoView(videoId: string): Promise<void> {
   const id = z.uuid().safeParse(videoId)
-  if (!id.success) return
+  if (!id.success || !(await allow(LIMITS.counter))) return
   await db.update(videos).set({ views: sql`${videos.views} + 1` }).where(eq(videos.id, id.data))
 }
 
@@ -86,7 +90,7 @@ export async function registerVideoView(videoId: string): Promise<void> {
 export async function getLiveUpdates(articleId: string, after: string): Promise<LiveUpdate[]> {
   const id = z.uuid().safeParse(articleId)
   const since = z.iso.datetime({ offset: true }).safeParse(after)
-  if (!id.success || !since.success) return []
+  if (!id.success || !since.success || !(await allow(LIMITS.live))) return []
   const a = await isArticleLive(id.data)
   if (!a?.live) return []
   return getLiveUpdateList(id.data, new Date(since.data))
@@ -125,7 +129,7 @@ export async function getPoll(input: z.input<typeof pollInput>): Promise<PollRes
 /** Un voto por navegador y encuesta: si ya votó, devuelve los resultados sin cambiar nada. */
 export async function votePoll(input: z.input<typeof pollInput> & { option: number }): Promise<PollResult | null> {
   const d = pollInput.extend({ option: z.number().int().min(0).max(5) }).safeParse(input)
-  if (!d.success) return null
+  if (!d.success || !(await allow(LIMITS.vote))) return null
   const poll = await findPoll(d.data.articleId, d.data.blockId)
   if (!poll || d.data.option >= poll.opts.length) return null
   await db.insert(pollVotes).values(d.data).onConflictDoNothing()
@@ -149,7 +153,7 @@ const pushInput = z.object({
 
 export async function savePushSubscription(sub: unknown): Promise<boolean> {
   const d = pushInput.safeParse(sub)
-  if (!d.success) return false
+  if (!d.success || !(await allow(LIMITS.push))) return false
   await db
     .insert(pushSubscriptions)
     .values({ endpoint: d.data.endpoint, p256dh: d.data.keys.p256dh, auth: d.data.keys.auth })

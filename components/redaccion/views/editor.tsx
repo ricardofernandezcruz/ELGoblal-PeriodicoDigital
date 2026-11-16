@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
+import { paragraphHtml, plainText, sanitizeInline } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import { addLiveUpdate, deleteLiveUpdate, getVersion, listLiveUpdates, listVersions, saveArticle, setArticleStatus, type AdminLiveUpdate } from '@/app/redaccion/actions'
 import {
@@ -49,7 +50,7 @@ import { usePickMedia } from './media'
 /* ---------- utilidades ---------- */
 
 const words = (E: Editor) =>
-  [E.title, E.lead, ...E.blocks.map((b) => [b.v, b.who, b.n, b.l, b.cap].filter(Boolean).join(' '))]
+  [E.title, E.lead, ...E.blocks.map((b) => [b.v && plainText(b.v, b.h), b.who, b.n, b.l, b.cap].filter(Boolean).join(' '))]
     .join(' ')
     .split(/\s+/)
     .filter(Boolean).length
@@ -60,7 +61,7 @@ function genSum(E: Editor) {
   return ps.length
     ? ps
         .map((p) => {
-          const s = p.v!.trim().split(/(?<=[.!?])\s/)[0]
+          const s = plainText(p.v!, p.h).trim().split(/(?<=[.!?])\s/)[0]
           return s.length > 120 ? s.slice(0, 117).trim() + '…' : s
         })
         .join('\n')
@@ -128,6 +129,111 @@ function AutoTA({
 
 const hasContent = (b: Block) => !!(b.v?.trim() || b.mediaId || b.u?.trim() || b.n?.trim())
 
+type Mark = 'bold' | 'italic' | 'underline'
+const MARKS: [Mark, string, string, string][] = [
+  ['bold', 'N', 'Negrita (Ctrl+B)', 'font-bold'],
+  ['italic', 'C', 'Cursiva (Ctrl+I)', 'italic font-serif'],
+  ['underline', 'S', 'Subrayado (Ctrl+U)', 'underline underline-offset-2'],
+]
+
+/** Párrafo con negrita, cursiva y subrayado. Guarda HTML limpio (ver lib/rich-text) y conserva el cursor:
+    el contenido solo se reescribe cuando cambia desde fuera (versiones, plantillas). */
+function RichText({ value, html, onChange, onSlash, label, placeholder }: { value: string; html?: boolean; onChange: (v: string) => void; onSlash?: () => void; label: string; placeholder: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const last = useRef<string | null>(null)
+  const [active, setActive] = useState<Record<Mark, boolean>>({ bold: false, italic: false, underline: false })
+  const [focus, setFocus] = useState(false)
+  const shown = paragraphHtml(value, html)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && shown !== last.current) {
+      el.innerHTML = shown
+      last.current = shown
+    }
+  }, [shown])
+
+  const readMarks = () => setActive({ bold: document.queryCommandState('bold'), italic: document.queryCommandState('italic'), underline: document.queryCommandState('underline') })
+  useEffect(() => {
+    if (!focus) return
+    document.addEventListener('selectionchange', readMarks)
+    return () => document.removeEventListener('selectionchange', readMarks)
+  }, [focus])
+
+  const emit = () => {
+    const el = ref.current!
+    const clean = sanitizeInline(el.innerHTML)
+    last.current = clean
+    if (plainText(clean, true).trim() === '/') onSlash?.()
+    onChange(clean)
+  }
+  const apply = (m: Mark) => {
+    ref.current?.focus()
+    document.execCommand('styleWithCSS', false, 'false')
+    document.execCommand(m)
+    readMarks()
+    emit()
+  }
+
+  return (
+    <div className="relative">
+      <div
+        role="toolbar"
+        aria-label="Formato del texto"
+        className={cn('absolute -top-9 right-0 z-10 flex gap-0.5 rounded-lg border border-eg-rule bg-eg-panel p-0.5 shadow-[0_6px_16px_rgba(0,0,0,.08)] transition-opacity', focus ? 'opacity-100' : 'pointer-events-none opacity-0')}
+      >
+        {MARKS.map(([m, l, t, cls]) => (
+          <button
+            key={m}
+            type="button"
+            title={t}
+            aria-label={t}
+            aria-pressed={active[m]}
+            tabIndex={focus ? 0 : -1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => apply(m)}
+            className={cn('grid size-7 place-items-center rounded-md border-0 bg-transparent text-[14px] text-eg-ink hover:bg-eg-soft aria-pressed:bg-eg-ink aria-pressed:text-eg-bg', cls)}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={ref}
+        role="textbox"
+        aria-multiline="true"
+        aria-label={label}
+        contentEditable
+        suppressContentEditableWarning
+        data-placeholder={placeholder}
+        onInput={emit}
+        onFocus={() => setFocus(true)}
+        onBlur={() => {
+          setFocus(false)
+          // Al salir se deja el HTML ya limpio en la caja.
+          if (ref.current && last.current !== null && ref.current.innerHTML !== last.current) ref.current.innerHTML = last.current
+        }}
+        onKeyDown={(e) => {
+          // Enter hace un salto de línea dentro del párrafo, como antes.
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            document.execCommand('insertLineBreak')
+          }
+        }}
+        onPaste={(e) => {
+          // Al pegar se conservan negrita, cursiva y subrayado; el resto del formato se descarta.
+          e.preventDefault()
+          const h = e.clipboardData.getData('text/html')
+          const t = e.clipboardData.getData('text/plain')
+          document.execCommand('insertHTML', false, h ? sanitizeInline(h) : paragraphHtml(t, false))
+          emit()
+        }}
+        className="min-h-[60px] w-full px-0 py-1 font-serif text-[17px] leading-[1.6] break-words outline-0 empty:before:text-eg-muted empty:before:content-[attr(data-placeholder)] [&_b]:font-bold [&_i]:italic [&_u]:underline"
+      />
+    </div>
+  )
+}
+
 function EditorInner() {
   const { E: e, setE, toast, dialog, closeDialog, setNews, show, newNote, call, can, sections, authors } = useAdmin()
   const E = e!
@@ -170,6 +276,7 @@ function EditorInner() {
           title: x.title,
           lead: x.lead,
           sectionId: x.sec,
+          extraSections: x.secs.filter((s) => s !== x.sec),
           authorId: x.au,
           tags: x.tags,
           slug: x.slug,
@@ -712,16 +819,13 @@ function Blocks({
             </div>
             <div className="grid gap-2 px-3 pt-1.5 pb-3">
               {b.t === 'p' && (
-                <AutoTA
-                  rows={3}
+                <RichText
                   value={b.v ?? ''}
-                  aria-label="Texto"
+                  html={b.h}
+                  label="Texto"
                   placeholder="Escribe el texto. Pulsa / para cambiar el tipo de bloque"
-                  onChange={(e) => {
-                    setBlock(i, { v: e.target.value })
-                    if (e.target.value === '/') picker(i, true)
-                  }}
-                  className="min-h-[60px] w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-1 font-serif text-[17px] leading-[1.6] outline-0"
+                  onChange={(v) => setBlock(i, { v, h: true })}
+                  onSlash={() => picker(i, true)}
                 />
               )}
               {b.t === 'sub' && (
@@ -976,9 +1080,11 @@ function Preview({ E, secName, auName }: { E: Editor; secName: string; auName: s
             )
           if (b.t === 'p')
             return (
-              <p key={b.id} className={cn('mb-3 text-[15px] leading-[1.65]', pi++ === 0 && 'eg-dropcap')}>
-                {b.v}
-              </p>
+              <p
+                key={b.id}
+                className={cn('mb-3 text-[15px] leading-[1.65]', pi++ === 0 && 'eg-dropcap')}
+                dangerouslySetInnerHTML={{ __html: paragraphHtml(b.v ?? '', b.h) }}
+              />
             )
           if (b.t === 'sub')
             return (
@@ -1171,7 +1277,7 @@ function PublishPanel({
           <label htmlFor="sc" className={lab}>
             Sección
           </label>
-          <select className={inp} id="sc" value={E.sec} onChange={(e) => change({ sec: e.target.value })}>
+          <select className={inp} id="sc" value={E.sec} onChange={(e) => change((x) => ({ sec: e.target.value, secs: x.secs.filter((s) => s !== e.target.value) }))}>
             {sections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -1192,6 +1298,32 @@ function PublishPanel({
             ))}
           </select>
         </div>
+      </div>
+      <div className={fieldCls}>
+        <span className={lab} id="sc2">
+          También aparece en <span className="font-normal text-eg-muted">(opcional)</span>
+        </span>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="sc2">
+          {sections
+            .filter((s) => s.id !== E.sec)
+            .map((s) => {
+              const on = E.secs.includes(s.id)
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={!on && E.secs.length >= 3}
+                  onClick={() => change((x) => ({ secs: on ? x.secs.filter((i) => i !== s.id) : [...x.secs, s.id] }))}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-full border border-eg-rule bg-eg-panel px-3 py-1 text-[13px] font-medium disabled:opacity-40 aria-pressed:border-eg-ink aria-pressed:bg-eg-ink aria-pressed:text-eg-bg"
+                >
+                  {on && <I n="check" />}
+                  {s.name}
+                </button>
+              )
+            })}
+        </div>
+        <span className={hint}>La dirección y la etiqueta de la nota son las de la sección principal. Hasta 3 secciones más.</span>
       </div>
       <div className={fieldCls}>
         <label htmlFor="tg" className={lab}>

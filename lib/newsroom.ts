@@ -1,7 +1,7 @@
 import 'server-only'
 import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { articles, authors, comments, media, sections, settings, subscribers, user, videoChannels, videos, type HomeSettings } from '@/db/schema'
+import { articles, articleSections, authors, comments, media, sections, settings, subscribers, user, videoChannels, videos, type HomeSettings } from '@/db/schema'
 import { mediaUsage } from './media-usage'
 import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload, MediaUse } from './newsroom-types'
 import { UI_STATUS } from './newsroom-types'
@@ -132,13 +132,17 @@ export async function getAdminData(): Promise<AdminData> {
 }
 
 export async function getEditorPayload(id: string): Promise<EditorPayload | null> {
-  const [a] = await db.select().from(articles).where(eq(articles.id, id))
+  const [[a], extra] = await Promise.all([
+    db.select().from(articles).where(eq(articles.id, id)),
+    db.select({ id: articleSections.sectionId }).from(articleSections).where(eq(articleSections.articleId, id)),
+  ])
   if (!a) return null
   return {
     id: a.id,
     title: a.title,
     lead: a.lead,
     sectionId: a.sectionId,
+    extraSections: extra.map((x) => x.id),
     authorId: a.authorId,
     tags: a.tags,
     slug: a.slug,

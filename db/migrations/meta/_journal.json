@@ -36,6 +36,20 @@
       "when": 1793891104961,
       "tag": "0004_live_polls_push",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794320676581,
+      "tag": "0005_article_sections",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794855912026,
+      "tag": "0006_rate_limits",
+      "breakpoints": true
     }
   ]
 }
