@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { SectionView } from '@/components/site/section-view'
+import { getAds } from '@/lib/ads'
 import { getSectionPage } from '@/lib/queries'
 
 export const revalidate = 60
@@ -18,7 +19,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function Page({ params }: Props) {
-  const d = await getSectionPage((await params).seccion)
+  const { seccion } = await params
+  const [d, ads] = await Promise.all([getSectionPage(seccion), getAds(['section'], seccion)])
   if (!d) notFound()
-  return <SectionView {...d} />
+  return <SectionView {...d} ads={ads} />
 }

@@ -6,7 +6,9 @@ import { subscribe } from '@/app/actions'
 import { ArtFrame } from '@/components/eg/art'
 import { Chip, Chips } from '@/components/eg/chip'
 import { useToast } from '@/components/eg/toast'
+import { AdSlot } from '@/components/site/ads'
 import { LiveBadge } from '@/components/site/article-extras'
+import type { AdMap } from '@/lib/ads-shared'
 import { SiteChrome } from '@/components/site/chrome'
 import { ContinueReading } from '@/components/site/saved'
 import { TimeAgo } from '@/components/site/time-ago'
@@ -15,6 +17,7 @@ import type { Card } from '@/lib/queries'
 import { formatTime } from '@/lib/site'
 import { cn } from '@/lib/utils'
 import type { MenuItem } from './site-header'
+import { GiftIntro } from './gift'
 import { buildStories, Stories } from './stories'
 
 /* Clases tipográficas del prototipo */
@@ -41,6 +44,7 @@ export function Kicker({ c, className }: { c: Card; className?: string }) {
 
 export type FrontPage = {
   breaking: { on: boolean; text: string }
+  gift: { on: boolean; from: string; to: string }
   menu: MenuItem[]
   hero: Card | null
   secondary: Card[]
@@ -48,11 +52,13 @@ export type FrontPage = {
   latest: Card[]
   updatedAt: string | null
   videos: VideoHubData
+  ads: AdMap
 }
 
 export function Portada({ data }: { data: FrontPage }) {
   return (
-    <SiteChrome menu={data.menu} breaking={data.breaking}>
+    <SiteChrome menu={data.menu} breaking={data.breaking} ads={data.ads}>
+      {data.gift.on && <GiftIntro from={data.gift.from} to={data.gift.to} />}
       <main className="mx-auto max-w-[1240px] px-5 pt-7">
         <LiveStrip updatedAt={data.updatedAt} />
         {data.hero && (
@@ -64,9 +70,11 @@ export function Portada({ data }: { data: FrontPage }) {
           />
         )}
         <ContinueReading className="mt-4" />
+        <AdSlot p="home-top" className="mt-6 mb-0" />
         {data.hero ? (
           <>
             <Hero hero={data.hero} secondary={data.secondary} mostRead={data.mostRead} />
+            <AdSlot p="home-mid" className="my-10" />
             <Latest cards={data.latest} />
             <Opinion cards={data.latest.filter((c) => c.secSlug === 'opinion')} />
           </>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { VideoHub } from '@/components/site/video'
+import { getAds } from '@/lib/ads'
 import { getMenu } from '@/lib/queries'
 import { getVideoHub } from '@/lib/video'
 
@@ -12,6 +13,6 @@ export const metadata: Metadata = {
 export const revalidate = 60
 
 export default async function Page() {
-  const [hub, menu] = await Promise.all([getVideoHub(), getMenu()])
-  return <VideoHub hub={hub} menu={menu} />
+  const [hub, menu, ads] = await Promise.all([getVideoHub(), getMenu(), getAds(['video'])])
+  return <VideoHub hub={hub} menu={menu} ads={ads} />
 }

@@ -9,6 +9,7 @@ export const PERMISSION_LABEL: Record<(typeof PERMISSIONS)[number], string> = {
   'home.manage': 'Gestionar la portada',
   'comment.moderate': 'Moderar comentarios',
   'media.manage': 'Borrar y reemplazar imágenes de otros',
+  'ads.manage': 'Gestionar publicidad',
   'team.manage': 'Administrar el equipo',
 }
 
@@ -19,6 +20,7 @@ export const PERMISSIONS = [
   'home.manage', // gestionar la portada
   'comment.moderate', // moderar comentarios
   'media.manage', // borrar y reemplazar cualquier imagen de la biblioteca
+  'ads.manage', // campañas de publicidad
   'team.manage', // administrar el equipo
 ] as const
 export type Permission = (typeof PERMISSIONS)[number]
@@ -26,7 +28,7 @@ export type Permission = (typeof PERMISSIONS)[number]
 export const MATRIX: Record<Role, readonly Permission[]> = {
   collaborator: ['article.create'],
   writer: ['article.create'],
-  editor: ['article.create', 'article.editAny', 'article.publish', 'home.manage', 'comment.moderate', 'media.manage'],
+  editor: ['article.create', 'article.editAny', 'article.publish', 'home.manage', 'comment.moderate', 'media.manage', 'ads.manage'],
   admin: PERMISSIONS,
 }
 

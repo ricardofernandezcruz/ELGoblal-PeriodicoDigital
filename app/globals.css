@@ -307,3 +307,354 @@ body.eg-focus footer {
     transform: scale(1.08);
   }
 }
+
+/* ---------- Regalo de Navidad (components/portada/gift.tsx) ----------
+   Fases: in (cae la caja) → shake (se sacude y asoma luz) → open (sale la tapa, rayos y confeti)
+   → reveal (la luz se abre en círculo y deja ver la portada). */
+@property --eg-r {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.eg-gift {
+  display: none;
+}
+/* Antes de hidratar lo muestra la marca del script; después, la propia animación (is-on), para que
+   el círculo de luz termine de abrirse aunque la página ya se pueda usar. */
+html[data-gift] .eg-gift,
+.eg-gift.is-on {
+  display: block;
+}
+html[data-gift] body {
+  overflow: hidden;
+}
+.eg-gift {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  cursor: pointer;
+  --gold: #e8b54a;
+  --gold-hi: #f6dc8c;
+  --paper: #c62d24;
+  --paper-lo: #8e1b15;
+}
+.eg-gift[data-phase='reveal'] {
+  pointer-events: none;
+}
+.eg-gift-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 45% at 50% 58%, rgba(232, 181, 74, 0.22), transparent 70%),
+    radial-gradient(120% 90% at 50% 40%, #1d2a3b 0%, #0b1119 75%);
+  -webkit-mask: radial-gradient(circle at 50% 54%, transparent var(--eg-r), #000 calc(var(--eg-r) + 2px));
+  mask: radial-gradient(circle at 50% 54%, transparent var(--eg-r), #000 calc(var(--eg-r) + 2px));
+  transition: --eg-r 1.15s cubic-bezier(0.7, 0, 0.25, 1), opacity 0.4s 1s;
+}
+.eg-gift[data-phase='reveal'] .eg-gift-veil {
+  --eg-r: 150vmax;
+  opacity: 0;
+}
+.eg-gift-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.eg-gift-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+  color: #f7f3ec;
+  padding-inline: 16px;
+  z-index: 1;
+  transition:
+    opacity 0.45s,
+    transform 0.6s cubic-bezier(0.5, 0, 0.75, 0);
+}
+.eg-gift[data-phase='reveal'] .eg-gift-stage {
+  opacity: 0;
+  transform: scale(1.25);
+}
+.eg-gift-kicker {
+  margin: 0;
+  font: 600 12px/1 var(--font-inter), system-ui, sans-serif;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold-hi);
+  animation: eg-gift-up 0.7s 0.15s both;
+}
+.eg-gift-title {
+  margin: 0 0 34px;
+  font: 500 clamp(26px, 5vw, 40px) / 1.1 var(--font-newsreader), Georgia, serif;
+  letter-spacing: -0.01em;
+  animation: eg-gift-up 0.7s 0.3s both;
+  transition: opacity 0.3s;
+}
+.eg-gift[data-phase='open'] :is(.eg-gift-title, .eg-gift-kicker) {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* Caja */
+.eg-gift-box {
+  --s: min(54vw, 230px);
+  position: relative;
+  width: var(--s);
+  height: calc(var(--s) * 0.9);
+  animation: eg-gift-drop 0.75s cubic-bezier(0.25, 1.4, 0.45, 1) both;
+}
+.eg-gift[data-phase='shake'] .eg-gift-box {
+  animation: eg-gift-shake 0.8s ease-in-out both;
+}
+/* Abierta: la caja se queda quieta (sin volver a lanzar la animación de entrada). */
+.eg-gift:is([data-phase='open'], [data-phase='reveal']) .eg-gift-box {
+  animation: none;
+}
+.eg-gift-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72%;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.13) 0 2.5px, transparent 3.5px) 0 0 / 26px 26px,
+    radial-gradient(circle at 70% 75%, rgba(246, 220, 140, 0.25) 0 2px, transparent 3px) 0 0 / 26px 26px,
+    linear-gradient(160deg, var(--paper), var(--paper-lo));
+  box-shadow:
+    inset 0 -16px 28px rgba(0, 0, 0, 0.28),
+    0 26px 40px -16px rgba(0, 0, 0, 0.7);
+}
+.eg-gift-body::before,
+.eg-gift-lid::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 17%;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, #a87a26, var(--gold-hi) 42%, var(--gold) 60%, #9c6f20);
+}
+.eg-gift-lid {
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  top: 14%;
+  height: 20%;
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.13) 0 2.5px, transparent 3.5px) 0 0 / 26px 26px,
+    linear-gradient(170deg, #d6372c, var(--paper));
+  box-shadow: 0 10px 14px -6px rgba(0, 0, 0, 0.45);
+  transform-origin: 20% 100%;
+  z-index: 3;
+}
+.eg-gift[data-phase='open'] .eg-gift-lid,
+.eg-gift[data-phase='reveal'] .eg-gift-lid {
+  animation: eg-gift-lid 0.75s cubic-bezier(0.3, 0.6, 0.4, 1) forwards;
+}
+
+/* Lazo: dos lazadas, nudo y luz */
+.eg-gift-bow {
+  position: absolute;
+  left: 50%;
+  bottom: 88%;
+  width: 44%;
+  height: 70%;
+  transform: translateX(-50%);
+}
+.eg-gift-bow span {
+  position: absolute;
+  bottom: 0;
+  width: 54%;
+  height: 100%;
+  border: calc(var(--s) * 0.045) solid var(--gold);
+  border-radius: 50% 50% 46% 46%;
+  background: radial-gradient(circle at 50% 70%, rgba(0, 0, 0, 0.25), transparent 60%);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+.eg-gift-bow span:first-child {
+  left: -2%;
+  transform: rotate(-32deg);
+  transform-origin: 100% 100%;
+}
+.eg-gift-bow span:nth-child(2) {
+  right: -2%;
+  transform: rotate(32deg);
+  transform-origin: 0 100%;
+}
+.eg-gift-bow i {
+  position: absolute;
+  left: 50%;
+  bottom: -14%;
+  width: 26%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 40%;
+  background: radial-gradient(circle at 40% 35%, var(--gold-hi), var(--gold) 55%, #9c6f20);
+}
+
+/* Etiqueta colgando */
+.eg-gift-tag {
+  position: absolute;
+  right: -16%;
+  top: 34%;
+  z-index: 4;
+  display: grid;
+  gap: 1px;
+  padding: 7px 10px 7px 16px;
+  border-radius: 3px 8px 8px 3px;
+  background: #f7f3ec;
+  color: #14181f;
+  text-align: left;
+  transform: rotate(9deg);
+  transform-origin: 0 50%;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  animation: eg-gift-swing 2.4s 0.7s ease-in-out infinite alternate;
+}
+.eg-gift-tag::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: #0b1119;
+}
+.eg-gift-tag small {
+  font: 600 9px/1 var(--font-inter), system-ui, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b3261e;
+}
+.eg-gift-tag b {
+  font: 600 15px/1.1 var(--font-newsreader), Georgia, serif;
+}
+.eg-gift[data-phase='open'] .eg-gift-tag,
+.eg-gift[data-phase='reveal'] .eg-gift-tag {
+  animation: eg-gift-tagfall 0.7s ease-in forwards;
+}
+
+/* Luz que asoma y rayos al abrir */
+.eg-gift-light {
+  position: absolute;
+  left: 50%;
+  top: 28%;
+  width: 120%;
+  height: 40%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 244, 214, 0.95), rgba(246, 220, 140, 0.45) 45%, transparent 75%);
+  opacity: 0;
+  z-index: 2;
+  transition: opacity 0.5s;
+}
+.eg-gift[data-phase='shake'] .eg-gift-light {
+  opacity: 0.55;
+}
+.eg-gift[data-phase='open'] .eg-gift-light,
+.eg-gift[data-phase='reveal'] .eg-gift-light {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.8);
+  transition:
+    opacity 0.2s,
+    transform 0.6s;
+}
+.eg-gift-rays {
+  position: absolute;
+  left: 50%;
+  top: 28%;
+  width: 260%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) scale(0.2);
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(246, 220, 140, 0.32) 0 7deg, transparent 7deg 22deg);
+  -webkit-mask: radial-gradient(closest-side, #000 20%, transparent 72%);
+  mask: radial-gradient(closest-side, #000 20%, transparent 72%);
+  opacity: 0;
+  z-index: 0;
+}
+.eg-gift[data-phase='open'] .eg-gift-rays,
+.eg-gift[data-phase='reveal'] .eg-gift-rays {
+  animation: eg-gift-rays 2.4s ease-out forwards;
+}
+
+.eg-gift-skip {
+  position: absolute;
+  z-index: 3;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(247, 243, 236, 0.35);
+  border-radius: 999px;
+  background: rgba(11, 17, 25, 0.4);
+  color: #f7f3ec;
+  font: 600 13px var(--font-inter), system-ui, sans-serif;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.eg-gift[data-phase='reveal'] .eg-gift-skip {
+  opacity: 0;
+}
+
+@keyframes eg-gift-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes eg-gift-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-60vh) rotate(-8deg) scale(0.8);
+  }
+}
+@keyframes eg-gift-shake {
+  0%, 100% { transform: rotate(0) }
+  12% { transform: rotate(-7deg) translateY(-6px) }
+  26% { transform: rotate(6deg) }
+  40% { transform: rotate(-5deg) translateY(-4px) }
+  54% { transform: rotate(4deg) }
+  68% { transform: rotate(-2deg) scale(1.03) }
+  84% { transform: rotate(1deg) scale(1.05) }
+}
+@keyframes eg-gift-lid {
+  30% {
+    transform: translateY(-30%) rotate(-6deg);
+  }
+  to {
+    transform: translate(70%, -65vh) rotate(38deg);
+    opacity: 0;
+  }
+}
+@keyframes eg-gift-tagfall {
+  to {
+    transform: translate(40px, 50vh) rotate(70deg);
+    opacity: 0;
+  }
+}
+@keyframes eg-gift-swing {
+  to {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes eg-gift-rays {
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.25) rotate(40deg);
+  }
+}

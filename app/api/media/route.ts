@@ -20,6 +20,17 @@ export async function POST(req: Request) {
   const kind = sniffImage(new Uint8Array(buf.slice(0, 12)))
   if (!kind) return NextResponse.json({ error: 'Formato no admitido. Usa JPG, PNG, WebP o GIF.' }, { status: 415 })
 
+  // Imagen de un anuncio: va a su propia carpeta y no entra en la biblioteca de Multimedia.
+  if (form?.get('purpose') === 'ad') {
+    if (!can(u.role, 'ads.manage')) return NextResponse.json({ error: 'Solo editores y administradores gestionan la publicidad.' }, { status: 403 })
+    try {
+      return NextResponse.json({ url: await putObject('ads/' + imageKey(kind.ext), buf, kind.mime) })
+    } catch (e) {
+      console.error('[media]', e)
+      return NextResponse.json({ error: e instanceof StorageError ? e.message : 'No se pudo guardar la imagen.' }, { status: 502 })
+    }
+  }
+
   const key = imageKey(kind.ext)
   try {
     const url = await putObject(key, buf, kind.mime)

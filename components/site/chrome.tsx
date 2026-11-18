@@ -6,6 +6,8 @@ import { Icon } from '@/components/eg/icon'
 import { ToastProvider } from '@/components/eg/toast'
 import { BreakingBar, SearchPalette, SiteHeader, type MenuItem } from '@/components/portada/site-header'
 import { cn } from '@/lib/utils'
+import type { AdMap } from '@/lib/ads-shared'
+import { AdsProvider } from './ads'
 import { TopStrip } from './indicators'
 import { InstallBanner, useServiceWorker } from './pwa'
 
@@ -14,18 +16,23 @@ export function SiteChrome({
   menu,
   breaking,
   active = '',
+  ads,
   children,
 }: {
   menu: MenuItem[]
   breaking?: { on: boolean; text: string }
   active?: string
+  /** Anuncios de esta página, por espacio. */
+  ads?: AdMap
   children: React.ReactNode
 }) {
   return (
     <ToastProvider className="bottom-[84px]">
-      <Chrome menu={menu} breaking={breaking} active={active}>
-        {children}
-      </Chrome>
+      <AdsProvider ads={ads}>
+        <Chrome menu={menu} breaking={breaking} active={active}>
+          {children}
+        </Chrome>
+      </AdsProvider>
     </ToastProvider>
   )
 }

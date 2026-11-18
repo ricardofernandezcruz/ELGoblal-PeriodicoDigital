@@ -7,6 +7,8 @@ import { db } from '@/db'
 import { articles, comments, pollVotes, pushSubscriptions, subscribers, videos } from '@/db/schema'
 import { sendConfirmation } from '@/lib/newsletter'
 import { allow, LIMITS } from '@/lib/rate-limit'
+import { countAd } from '@/lib/ads'
+import { PLACEMENT_IDS } from '@/lib/ads-shared'
 import { getLiveUpdateList, isArticleLive, searchCards, type Card, type LiveUpdate } from '@/lib/queries'
 
 type Result = { ok: true; message: string } | { ok: false; error: string }
@@ -163,4 +165,13 @@ export async function savePushSubscription(sub: unknown): Promise<boolean> {
 
 export async function removePushSubscription(endpoint: string): Promise<void> {
   if (typeof endpoint === 'string' && endpoint.length < 1000) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint))
+}
+
+/* ---------- Publicidad ---------- */
+
+/** Vista de un anuncio (se manda cuando estuvo visible al menos a medias durante 1 s). */
+export async function adView(campaignId: string, placement: string): Promise<void> {
+  const id = z.uuid().safeParse(campaignId)
+  if (!id.success || !PLACEMENT_IDS.includes(placement as never) || !(await allow(LIMITS.counter))) return
+  await countAd(id.data, placement, 'views').catch(() => null)
 }

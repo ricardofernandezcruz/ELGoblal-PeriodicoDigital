@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { addComment, markHelpful, registerRead } from '@/app/actions'
 import { ArtFrame, ArtImg } from '@/components/eg/art'
 import { Icon } from '@/components/eg/icon'
@@ -16,6 +16,8 @@ import { paragraphHtml, plainText } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import { LiveBadge, LiveFeed, Poll, QuoteShare, whatsappUrl, WhatsAppIcon } from './article-extras'
 import { SiteChrome } from './chrome'
+import type { AdMap } from '@/lib/ads-shared'
+import { AdSlot } from './ads'
 import { SaveButton } from './saved'
 import { TimeAgo } from './time-ago'
 
@@ -30,11 +32,12 @@ export type ArticlePageData = {
   comments: { id: string; parentId: string | null; who: string; body: string; at: string; helpful: number }[]
   minutes: number
   menu: MenuItem[]
+  ads: AdMap
 }
 
 export function ArticleView(props: ArticlePageData) {
   return (
-    <SiteChrome menu={props.menu} active={props.article.secSlug}>
+    <SiteChrome menu={props.menu} active={props.article.secSlug} ads={props.ads}>
       <ArticleInner {...props} />
     </SiteChrome>
   )
@@ -86,12 +89,22 @@ function Body({ articleId, blocks, heroSrc, credits }: { articleId: string; bloc
       else groups.push({ t: 'gal', id: 'g' + b.id, im: [b] })
     } else if (!(b.t === 'p' && !plainText(b.v, b.h).trim())) groups.push(b)
   }
+  // El anuncio va después del tercer párrafo (si la nota tiene al menos cuatro, para que no quede al final).
+  const paras = groups.filter((g) => g.t === 'p')
+  const adAfter = paras.length >= 4 ? paras[2].id : null
   return (
     <>
       {groups.map((b) => {
         switch (b.t) {
           case 'p':
-            return <p key={b.id} dangerouslySetInnerHTML={{ __html: paragraphHtml(b.v, b.h) }} />
+            return b.id === adAfter ? (
+              <Fragment key={b.id}>
+                <p dangerouslySetInnerHTML={{ __html: paragraphHtml(b.v, b.h) }} />
+                <AdSlot p="article" className="my-9" />
+              </Fragment>
+            ) : (
+              <p key={b.id} dangerouslySetInnerHTML={{ __html: paragraphHtml(b.v, b.h) }} />
+            )
           case 'poll':
             return <Poll key={b.id} articleId={articleId} block={b} />
           case 'sub':

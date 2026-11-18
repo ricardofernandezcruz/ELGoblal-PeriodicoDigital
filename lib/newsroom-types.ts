@@ -71,7 +71,7 @@ export type AdminComment = { id: string; who: string; text: string; on: string; 
 export type AdminSection = { id: string; name: string; slug: string; inMenu: boolean }
 export type AdminAuthor = { id: string; name: string }
 export type AdminUser = { id: string; name: string; email: string; role: Role; twoFactor: boolean; image: string | null; bio: string }
-export type AdminHome = { featured: (string | null)[]; breaking: { on: boolean; text: string } }
+export type AdminHome = { featured: (string | null)[]; breaking: { on: boolean; text: string }; gift: { on: boolean; from: string; to: string } }
 export type AdminStats = { published: number; publishedMonth: number; reads: number; subscribers: number; pending: number }
 
 export type AdminData = {

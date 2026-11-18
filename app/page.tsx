@@ -1,4 +1,5 @@
 import { Portada } from '@/components/portada/portada'
+import { getAds } from '@/lib/ads'
 import { getFrontPage } from '@/lib/queries'
 import { getVideoHub } from '@/lib/video'
 
@@ -6,6 +7,6 @@ import { getVideoHub } from '@/lib/video'
 export const revalidate = 60
 
 export default async function Page() {
-  const [front, videos] = await Promise.all([getFrontPage(), getVideoHub()])
-  return <Portada data={{ ...front, videos }} />
+  const [front, videos, ads] = await Promise.all([getFrontPage(), getVideoHub(), getAds(['home-top', 'home-mid'])])
+  return <Portada data={{ ...front, videos, ads }} />
 }

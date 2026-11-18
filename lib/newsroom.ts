@@ -6,7 +6,11 @@ import { mediaUsage } from './media-usage'
 import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload, MediaUse } from './newsroom-types'
 import { UI_STATUS } from './newsroom-types'
 
-export const DEFAULT_HOME: HomeSettings = { featured: [null, null, null], breaking: { on: false, text: '' } }
+export const DEFAULT_HOME: Required<HomeSettings> = {
+  featured: [null, null, null],
+  breaking: { on: false, text: '' },
+  gift: { on: true, from: '2026-11-16', to: '2026-12-31' },
+}
 
 export const slugify = (t: string) =>
   t

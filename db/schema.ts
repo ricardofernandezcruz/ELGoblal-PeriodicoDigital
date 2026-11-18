@@ -236,6 +236,50 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   createdAt: created(),
 })
 
+/* ---------- Publicidad ---------- */
+
+/** Una pieza de una campaña: imagen (también GIF) o video, con su tamaño real para reservar el hueco. */
+export type AdCreative = { type: 'image' | 'video'; url: string; w: number; h: number }
+
+export const adCampaigns = pgTable('ad_campaigns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  advertiser: text('advertiser').notNull().default(''),
+  /** Destino del clic (https). */
+  url: text('url').notNull(),
+  /** Descripción del anuncio para quien no puede verlo. */
+  alt: text('alt').notNull().default(''),
+  paused: boolean('paused').notNull().default(false),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  /** Espacios donde sale (ver lib/ads-shared.ts). */
+  placements: text('placements').array().notNull().default(sql`'{}'::text[]`),
+  /** Secciones (slug) donde sale; vacío = en todas. */
+  sections: text('sections').array().notNull().default(sql`'{}'::text[]`),
+  /** Peso en la rotación cuando varias campañas comparten espacio (1 a 5). */
+  weight: integer('weight').notNull().default(1),
+  desktop: jsonb('desktop').$type<AdCreative>(),
+  mobile: jsonb('mobile').$type<AdCreative>(),
+  createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: created(),
+  updatedAt: updated(),
+})
+
+/** Vistas (anuncio visible al menos a medias durante 1 s) y clics por campaña, día y espacio. */
+export const adStats = pgTable(
+  'ad_stats',
+  {
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => adCampaigns.id, { onDelete: 'cascade' }),
+    day: text('day').notNull(),
+    placement: text('placement').notNull(),
+    views: integer('views').notNull().default(0),
+    clicks: integer('clicks').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.campaignId, t.day, t.placement] })],
+)
+
 /** Límites de uso de los formularios públicos (comentarios, votos, suscripción…), por IP cifrada. */
 export const rateLimits = pgTable('rate_limits', {
   key: text('key').primaryKey(),
@@ -249,6 +293,8 @@ export type HomeSettings = {
   /** Notas destacadas: id fijo o null para que el sistema elija la más leída. */
   featured: (string | null)[]
   breaking: { on: boolean; text: string }
+  /** Animación de regalo al entrar a la portada (temporada navideña). Fechas AAAA-MM-DD, hora de Santo Domingo. */
+  gift?: { on: boolean; from: string; to: string }
 }
 
 export const settings = pgTable('settings', {

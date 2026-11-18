@@ -14,6 +14,8 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import type { ChannelFeed, Clip } from '@/lib/video'
 import { cn } from '@/lib/utils'
+import type { AdMap } from '@/lib/ads-shared'
+import { AdSlot } from './ads'
 import { SiteChrome } from './chrome'
 import { TimeAgo } from './time-ago'
 
@@ -504,7 +506,7 @@ const interleave = (lists: Clip[][]) => {
   return out
 }
 
-export function VideoHub({ hub, menu }: { hub: VideoHubData; menu: MenuItem[] }) {
+export function VideoHub({ hub, menu, ads }: { hub: VideoHubData; menu: MenuItem[]; ads?: AdMap }) {
   const top = useRef<HTMLDivElement>(null)
   const [cur, setCur] = useState<Clip | null>(null)
   const featured = cur ?? hub.featured
@@ -518,7 +520,7 @@ export function VideoHub({ hub, menu }: { hub: VideoHubData; menu: MenuItem[] })
   const popular = [...hub.own].filter((c) => c.views > 0).sort((a, b) => b.views - a.views).slice(0, 5)
 
   return (
-    <SiteChrome menu={menu} active="video">
+    <SiteChrome menu={menu} active="video" ads={ads}>
       <main className="mx-auto max-w-[1240px] px-5 pt-8">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b-2 border-eg-ink pb-3">
           <div>
@@ -576,6 +578,7 @@ export function VideoHub({ hub, menu }: { hub: VideoHubData; menu: MenuItem[] })
         )}
 
         <ShortsReel clips={shorts} />
+        <AdSlot p="video" className="mt-12 mb-0" />
 
         {popular.length >= 3 ? (
           <div className="mt-12 grid grid-cols-[1fr_340px] gap-8 max-[900px]:grid-cols-1">

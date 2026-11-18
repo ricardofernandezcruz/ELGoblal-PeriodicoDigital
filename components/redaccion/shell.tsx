@@ -13,6 +13,7 @@ import { AdminProvider, useAdmin } from './store'
 import { AccountDialog } from './views/account'
 import { Avatar } from './views/profile'
 import { B, btnClass, Overlay } from './ui'
+import { AdsView } from './views/ads'
 import { Comments } from './views/comments'
 import { Dashboard } from './views/dashboard'
 import { EditorView } from './views/editor'
@@ -109,6 +110,11 @@ function Shell() {
           <NavBtn v="home" icon="layout">
             Portada
           </NavBtn>
+          {can('ads.manage') && (
+            <NavBtn v="ads" icon="megaphone">
+              Publicidad
+            </NavBtn>
+          )}
           <NavBtn v="stats" icon="chart">
             Analítica
           </NavBtn>
@@ -186,6 +192,7 @@ function Shell() {
             {view === 'home' && <HomeView />}
             {view === 'videos' && <VideosView />}
             {view === 'media' && <MediaView />}
+            {view === 'ads' && (can('ads.manage') ? <AdsView /> : <Dashboard />)}
             {view === 'com' && <Comments />}
             {view === 'stats' && <Stats />}
             {view === 'team' && <Team />}

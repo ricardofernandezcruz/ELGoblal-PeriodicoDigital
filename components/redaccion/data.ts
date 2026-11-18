@@ -5,7 +5,7 @@ export type { AdminChannel, AdminComment, AdminMedia, AdminNews, AdminSection, A
 
 /** 'rev' = enviar a revisión (para quien no puede publicar). */
 export type Mode = 'now' | 'sch' | 'draft' | 'rev'
-export type View = 'dash' | 'news' | 'edit' | 'videos' | 'home' | 'media' | 'com' | 'stats' | 'team'
+export type View = 'dash' | 'news' | 'edit' | 'videos' | 'home' | 'ads' | 'media' | 'com' | 'stats' | 'team'
 
 export type Editor = {
   id: string | null
@@ -69,6 +69,7 @@ export const VIEWS: Record<View, [string, string]> = {
   media: ['Contenido', 'Multimedia'],
   com: ['Contenido', 'Comentarios'],
   home: ['Sitio', 'Portada'],
+  ads: ['Sitio', 'Publicidad'],
   stats: ['Sitio', 'Analítica'],
   team: ['Sitio', 'Equipo y permisos'],
 }

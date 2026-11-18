@@ -91,6 +91,7 @@ export async function getFrontPage() {
 
   return {
     breaking: home.breaking,
+    gift: home.gift,
     menu,
     hero: featured[0],
     secondary: featured.slice(1).filter(Boolean) as Card[],

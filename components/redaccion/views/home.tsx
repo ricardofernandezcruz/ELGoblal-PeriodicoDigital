@@ -277,6 +277,35 @@ export function HomeView() {
           </Card>
 
           <Card className={cp}>
+            <h3 className={h3}>Regalo de Navidad</h3>
+            <div className={`${sub} mb-1.5`}>
+              Al entrar a la portada, un regalo se abre y deja ver el periódico. Sale una vez al día por lector y nunca a quien pidió menos animaciones.
+            </div>
+            <Row2>
+              <span>Mostrar en estas fechas</span>
+              <Switch checked={draft.gift.on} onChange={(v) => setDraft((h) => ({ ...h, gift: { ...h.gift, on: v } }))} />
+            </Row2>
+            <div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="gfrom" className="text-[13px] font-semibold">
+                  Desde
+                </label>
+                <input id="gfrom" type="date" className={inp} value={draft.gift.from} onChange={(e) => setDraft((h) => ({ ...h, gift: { ...h.gift, from: e.target.value } }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="gto" className="text-[13px] font-semibold">
+                  Hasta (incluido)
+                </label>
+                <input id="gto" type="date" className={inp} value={draft.gift.to} min={draft.gift.from} onChange={(e) => setDraft((h) => ({ ...h, gift: { ...h.gift, to: e.target.value } }))} />
+              </div>
+            </div>
+            <a href="/?regalo=1" target="_blank" rel="noopener" className="mt-3 inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-eg-rule bg-eg-panel px-2.5 text-[13px] font-semibold hover:bg-eg-soft">
+              <I n="eye" />
+              Ver la animación
+            </a>
+          </Card>
+
+          <Card className={cp}>
             <h3 className={h3}>Secciones del menú</h3>
             <div className={`${sub} mb-1.5`}>Ordénalas o escóndelas sin tocar código</div>
             <QL className="[&>li]:items-center">

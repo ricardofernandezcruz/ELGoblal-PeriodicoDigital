@@ -46,7 +46,9 @@ export const viewport: Viewport = {
 }
 
 // Aplica el tema guardado antes de pintar, para evitar el parpadeo.
-const themeScript = `try{var t=localStorage.getItem('eg-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}`
+// En la portada, marca también si toca la animación del regalo (una vez al día), para taparla antes de pintar.
+const themeScript = `try{var t=localStorage.getItem('eg-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
+try{if(location.pathname==='/'&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var d=new Date().toLocaleDateString('en-CA',{timeZone:'America/Santo_Domingo'});if(location.search.indexOf('regalo=1')>-1||localStorage.getItem('eg-gift')!==d)document.documentElement.dataset.gift=d}}catch(e){}`
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

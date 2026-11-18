@@ -5,18 +5,21 @@ import { CardMedium, h3, Img, Kicker, lead, meta, secH, secTitle } from '@/compo
 import type { MenuItem } from '@/components/portada/site-header'
 import type { Card } from '@/lib/queries'
 import { cn } from '@/lib/utils'
+import type { AdMap } from '@/lib/ads-shared'
+import { AdSlot } from './ads'
 import { SiteChrome } from './chrome'
 import { TimeAgo } from './time-ago'
 
-export function SectionView({ section, cards, menu }: { section: { name: string; slug: string }; cards: Card[]; menu: MenuItem[] }) {
+export function SectionView({ section, cards, menu, ads }: { section: { name: string; slug: string }; cards: Card[]; menu: MenuItem[]; ads?: AdMap }) {
   const [first, ...rest] = cards
   return (
-    <SiteChrome menu={menu} active={section.slug}>
+    <SiteChrome menu={menu} active={section.slug} ads={ads}>
       <main className="mx-auto max-w-[1240px] px-5 pt-9">
         <div className={secH}>
           <h1 className={secTitle}>{section.name}</h1>
           <span className={meta}>{cards.length ? `${cards.length} ${cards.length === 1 ? 'nota' : 'notas'}` : ''}</span>
         </div>
+        <AdSlot p="section" className="mt-0 mb-9" />
         {first ? (
           <>
             <article className="mb-10 grid grid-cols-[1.4fr_1fr] items-center gap-8 max-[900px]:grid-cols-1">

@@ -625,6 +625,10 @@ export async function moderateComment(id: string, approve: boolean): Promise<Act
 const homeSchema = z.object({
   featured: z.array(z.uuid().nullable()).length(3),
   breaking: z.object({ on: z.boolean(), text: z.string().max(120) }),
+  gift: z
+    .object({ on: z.boolean(), from: z.iso.date(), to: z.iso.date() })
+    .refine((g) => g.from <= g.to, 'La fecha de fin debe ser posterior a la de inicio.')
+    .optional(),
 })
 
 export async function saveHome(input: z.input<typeof homeSchema>): Promise<ActionResult<void>> {

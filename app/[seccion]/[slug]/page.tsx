@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { ArticleView } from '@/components/site/article-view'
+import { getAds } from '@/lib/ads'
 import { getArticle, getMenu, readingMinutes } from '@/lib/queries'
 
 export const revalidate = 60
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params }: Props) {
   const { seccion, slug } = await params
-  const [d, menu] = await Promise.all([getArticle(seccion, slug), getMenu()])
+  const [d, menu, ads] = await Promise.all([getArticle(seccion, slug), getMenu(), getAds(['article'], seccion)])
   if (!d) notFound()
-  return <ArticleView {...d} minutes={readingMinutes(d.article)} menu={menu} />
+  return <ArticleView {...d} minutes={readingMinutes(d.article)} menu={menu} ads={ads} />
 }
