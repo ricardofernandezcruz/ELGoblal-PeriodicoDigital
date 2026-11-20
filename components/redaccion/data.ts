@@ -1,5 +1,6 @@
 /* Utilidades y tipos del panel de redacción (los datos vienen de la base de datos). */
 import type { AdminVersion, Block, BlockType, Status } from '@/lib/newsroom-types'
+import type { Review } from '@/lib/review-shared'
 
 export type { AdminChannel, AdminComment, AdminMedia, AdminNews, AdminSection, AdminUser, AdminVideo, Block, BlockType, Status } from '@/lib/newsroom-types'
 
@@ -28,6 +29,8 @@ export type Editor = {
   flash: boolean
   /** Cobertura en vivo. */
   live: boolean
+  /** Ficha de la obra (solo en la sección Reseñas). */
+  review: Review | null
   tab: 'pv' | 'pb' | 'ql'
   view: 'desk' | 'mob'
   status: string
@@ -132,6 +135,7 @@ export const emptyEditor = (o: Partial<Editor> = {}): Editor => ({
   news: false,
   flash: false,
   live: false,
+  review: null,
   tab: 'pv',
   view: 'desk',
   status: 'Listo para escribir',

@@ -18,6 +18,7 @@ import { LiveBadge, LiveFeed, Poll, QuoteShare, whatsappUrl, WhatsAppIcon } from
 import { SiteChrome } from './chrome'
 import type { AdMap } from '@/lib/ads-shared'
 import { AdSlot } from './ads'
+import { ReviewHero } from './reviews'
 import { SaveButton } from './saved'
 import { TimeAgo } from './time-ago'
 
@@ -196,6 +197,9 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
   const [si, setSi] = useState(1)
   const [focus, setFocus] = useState(false)
   const lastTrack = useRef(0)
+  // En el celular la barra de herramientas se esconde al bajar leyendo y vuelve al subir.
+  const [toolsAway, setToolsAway] = useState(false)
+  const lastY = useRef(0)
   const item = { id: a.id, title: a.title, href: `/${a.secSlug}/${a.slug}`, img: a.hero?.src ?? null, sec: a.sec }
   // La URL completa solo se conoce en el navegador; antes se usa la ruta.
   const [url, setUrl] = useState(item.href)
@@ -208,6 +212,11 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
         h = r.height - innerHeight * 0.6
       const p = Math.max(0, Math.min(100, ((-r.top + innerHeight * 0.3) / h) * 100))
       setProg(p)
+      const y = scrollY
+      if (Math.abs(y - lastY.current) > 12) {
+        setToolsAway(y > lastY.current && y > 200)
+        lastY.current = y
+      }
       // «Continúa leyendo»: se guarda el avance como mucho cada 2 s.
       if (Date.now() - lastTrack.current > 2000 && p > 3) {
         lastTrack.current = Date.now()
@@ -255,7 +264,13 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
 
       <aside
         aria-label="Herramientas de lectura"
-        className="fixed top-1/2 left-[max(12px,calc(50%-520px))] z-[15] flex -translate-y-1/2 flex-col gap-1.5 rounded-lg border border-eg-rule bg-eg-card p-1.5 max-[1180px]:top-auto max-[1180px]:bottom-3 max-[1180px]:left-1/2 max-[1180px]:-translate-x-1/2 max-[1180px]:translate-y-0 max-[1180px]:flex-row max-[900px]:bottom-[64px]"
+        className={cn(
+          'fixed top-1/2 left-[max(12px,calc(50%-520px))] z-[15] flex -translate-y-1/2 flex-col gap-1.5 rounded-lg border border-eg-rule bg-eg-card p-1.5 transition-[transform,opacity] duration-200',
+          'max-[1180px]:top-auto max-[1180px]:bottom-3 max-[1180px]:left-1/2 max-[1180px]:-translate-x-1/2 max-[1180px]:translate-y-0 max-[1180px]:flex-row max-[1180px]:shadow-[0_8px_24px_rgba(0,0,0,.18)]',
+          // Celular: encima de la barra de navegación (unos 59 px más el margen inferior del iPhone).
+          'max-[900px]:bottom-[calc(70px+env(safe-area-inset-bottom,0px))]',
+          toolsAway && 'max-[1180px]:pointer-events-none max-[1180px]:translate-y-[calc(100%+90px)] max-[1180px]:opacity-0',
+        )}
       >
         <button
           className={tool}
@@ -331,7 +346,8 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
             label
           />
         </div>
-        {a.hero && (
+        {a.review && <ReviewHero review={a.review} />}
+        {a.hero && !a.review && (
           <figure className="m-0">
             <ArtFrame src={a.hero.src} alt={a.hero.alt} className="mt-7 mb-2" />
             {(() => {
@@ -341,10 +357,10 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
             })()}
           </figure>
         )}
-        {!a.hero && <div className="mb-7" />}
+        {!a.hero && !a.review && <div className="mb-7" />}
 
         <div ref={txt} className="[&>p]:mb-[1.1em] [&>p]:font-serif [&>p]:text-[length:var(--fs)] [&>p]:leading-[1.65] [&>p]:break-words [&>p]:whitespace-pre-line">
-          <Body articleId={a.id} blocks={a.blocks} heroSrc={a.hero?.src ?? null} credits={a.credits} />
+          <Body articleId={a.id} blocks={a.blocks} heroSrc={a.review ? null : (a.hero?.src ?? null)} credits={a.credits} />
         </div>
         <QuoteShare container={txt} title={a.title} />
 

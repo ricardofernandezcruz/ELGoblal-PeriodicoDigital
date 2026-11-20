@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArtImg } from '@/components/eg/art'
+import { emptyReview, REVIEW_KINDS, REVIEW_SECTION, type Review } from '@/lib/review-shared'
 import { paragraphHtml, plainText, sanitizeInline } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import { addLiveUpdate, deleteLiveUpdate, getVersion, listLiveUpdates, listVersions, saveArticle, setArticleStatus, type AdminLiveUpdate } from '@/app/redaccion/actions'
@@ -286,6 +287,8 @@ function EditorInner() {
           news: x.news,
           flash: x.flash,
           live: x.live,
+          // El servidor solo la guarda si la nota está en Reseñas.
+          review: x.review ?? emptyReview(),
           manual,
         }),
       )
@@ -597,6 +600,9 @@ function EditorInner() {
             onChange={(ev) => change({ lead: ev.target.value })}
             className="w-full resize-none border-0 border-b border-eg-rule bg-transparent pt-1 pb-3.5 font-serif text-[19px] leading-[1.45] text-eg-muted outline-0"
           />
+          {sections.find((s) => s.id === E.sec)?.slug === REVIEW_SECTION && (
+            <ReviewPanel review={E.review ?? emptyReview()} onChange={(r) => change({ review: r })} pickMedia={pickMedia} />
+          )}
           <Blocks
             E={E}
             setBlock={setBlock}
@@ -1414,6 +1420,103 @@ function PublishPanel({
         {E.live && <LiveDesk id={E.id} />}
       </div>
     </>
+  )
+}
+
+/* ---------- ficha de reseña ---------- */
+
+/** Datos del libro reseñado: se muestran con el libro que se abre y en la portada de Reseñas. */
+function ReviewPanel({ review: r, onChange, pickMedia }: { review: Review; onChange: (r: Review) => void; pickMedia: (cb: (m: { id: string; s: string; a: string }) => void) => void }) {
+  const set = (p: Partial<Review>) => onChange({ ...r, ...p })
+  const num = (v: string) => (v.trim() && Number.isFinite(Number(v)) ? Math.round(Number(v)) : null)
+  const text = (k: 'work' | 'author' | 'publisher' | 'isbn' | 'buyUrl', label: string, ph = '') => (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label htmlFor={'rv-' + k} className={lab}>
+        {label}
+      </label>
+      <input id={'rv-' + k} className={inp} value={r[k]} placeholder={ph} onChange={(e) => set({ [k]: e.target.value })} />
+    </div>
+  )
+  return (
+    <Card className="my-4 grid gap-3 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <b className="font-serif text-[17px]">Ficha del libro</b>
+        <Badge k="sch">Reseña · {REVIEW_KINDS[r.kind].one}</Badge>
+        <span className={cn(hint, 'basis-full')}>Aparece arriba de la reseña, con el libro que el lector puede abrir, y en la portada de Reseñas.</span>
+      </div>
+      <div className="grid grid-cols-[120px_1fr] gap-4 max-[560px]:grid-cols-1">
+        <div className="grid content-start gap-2">
+          <button
+            type="button"
+            onClick={() => pickMedia((m) => set({ coverId: m.id, cover: m.s }))}
+            className="grid aspect-[2/3] w-full place-items-center overflow-hidden rounded-md border border-dashed border-eg-rule bg-eg-soft p-0 text-center text-xs text-eg-muted hover:border-eg-ink"
+          >
+            {r.cover ? <ArtImg src={r.cover} /> : 'Elegir la portada'}
+          </button>
+          {r.cover && (
+            <B v="ghost" sm onClick={() => set({ coverId: null, cover: '' })}>
+              Quitar portada
+            </B>
+          )}
+        </div>
+        <div className="grid min-w-0 content-start gap-3">
+          <div className="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
+            {text('work', 'Título del libro')}
+            {text('author', 'Autor')}
+            {text('publisher', 'Editorial')}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="rv-year" className={lab}>
+                  Año
+                </label>
+                <input id="rv-year" className={inp} inputMode="numeric" value={r.year ?? ''} onChange={(e) => set({ year: num(e.target.value) })} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="rv-pages" className={lab}>
+                  Páginas
+                </label>
+                <input id="rv-pages" className={inp} inputMode="numeric" value={r.pages ?? ''} onChange={(e) => set({ pages: num(e.target.value) })} />
+              </div>
+            </div>
+            {text('isbn', 'ISBN', 'Opcional')}
+            {text('buyUrl', 'Dónde conseguirlo', 'https://… (opcional)')}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={lab}>Valoración</span>
+            <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Valoración">
+              {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={r.rating === v}
+                  onClick={() => set({ rating: v })}
+                  className="h-8 min-w-9 rounded-md border border-eg-rule bg-eg-panel px-1.5 text-[13px] font-semibold tabular-nums aria-checked:border-eg-ink aria-checked:bg-eg-ink aria-checked:text-eg-bg"
+                >
+                  {v.toLocaleString('es-DO')}
+                </button>
+              ))}
+              <span className="ml-2 text-[#e0a526]" aria-hidden="true">
+                {'★'.repeat(Math.floor(r.rating))}
+                {r.rating % 1 ? '½' : ''}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rv-verdict" className={lab}>
+              La reseña en una frase
+            </label>
+            <input id="rv-verdict" className={inp} maxLength={240} value={r.verdict} placeholder="Ej.: Una novela breve que se queda contigo mucho después de cerrarla." onChange={(e) => set({ verdict: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rv-quote" className={lab}>
+              Una cita del libro <span className="font-normal text-eg-muted">(aparece al abrir la portada)</span>
+            </label>
+            <textarea id="rv-quote" className={ta} rows={2} maxLength={400} value={r.quote} onChange={(e) => set({ quote: e.target.value })} />
+          </div>
+        </div>
+      </div>
+    </Card>
   )
 }
 

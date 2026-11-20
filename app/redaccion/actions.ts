@@ -8,13 +8,14 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
 import { ROLES } from '@/db/auth-schema'
-import { account, articles, articleSections, articleVersions, auditLog, authors, comments, media, sections, liveUpdates, session, settings, subscribers, twoFactor, user, videos, type ArticleBlock } from '@/db/schema'
+import { account, articles, articleSections, articleVersions, auditLog, authors, comments, media, sections, liveUpdates, session, settings, subscribers, twoFactor, user, videos, type ArticleBlock, type ReviewData as ArticleReview } from '@/db/schema'
 import { EmailError, emailReady, sendEmail } from '@/lib/email'
 import { imageKey, MAX_IMAGE, sniffImage } from '@/lib/image'
 import { buildDigest, digestEmail } from '@/lib/newsletter'
 import { mediaUsage, unavailableMedia } from '@/lib/media-usage'
 import { getEditorPayload, getNews, slugify, toMedia } from '@/lib/newsroom'
 import { pushCount, PushError, pushReady, sendPush } from '@/lib/push'
+import { RESERVED_REVIEW_SLUGS, REVIEW_SECTION } from '@/lib/review-shared'
 import { sanitizeInline } from '@/lib/rich-text'
 import { getSiteInfo } from '@/lib/site-info'
 import { SOCIALS, type SiteInfo, type SocialId } from '@/lib/site-info-shared'
@@ -78,6 +79,24 @@ const saveSchema = z.object({
   news: z.boolean(),
   flash: z.boolean(),
   live: z.boolean().default(false),
+  review: z
+    .object({
+      kind: z.enum(['libro']),
+      work: z.string().trim().max(200),
+      author: z.string().trim().max(200),
+      publisher: z.string().trim().max(200),
+      year: z.number().int().min(0).max(2200).nullable(),
+      pages: z.number().int().min(1).max(100000).nullable(),
+      isbn: z.string().trim().max(20),
+      coverId: z.uuid().nullable(),
+      cover: z.string().max(500),
+      rating: z.number().min(0.5).max(5).multipleOf(0.5),
+      verdict: z.string().trim().max(240),
+      quote: z.string().trim().max(400),
+      buyUrl: z.string().trim().max(500).refine((u) => !u || /^https?:\/\//.test(u), 'El enlace de compra debe empezar por https://'),
+    })
+    .nullable()
+    .default(null),
   manual: z.boolean().default(false),
 })
 
@@ -127,6 +146,9 @@ async function uniqueSlug(base: string, sectionId: string, selfId: string | null
         .where(and(eq(articles.sectionId, sectionId), like(articles.slug, root + '%'), selfId ? ne(articles.id, selfId) : sql`true`))
     ).map((r) => r.slug),
   )
+  // En Reseñas, /resenas/libros (y los demás tipos) son páginas propias: ninguna nota puede usar ese slug.
+  const [sec] = await db.select({ slug: sections.slug }).from(sections).where(eq(sections.id, sectionId))
+  if (sec?.slug === REVIEW_SECTION) RESERVED_REVIEW_SLUGS.forEach((r) => taken.add(r))
   if (!taken.has(root)) return root
   for (let i = 2; ; i++) if (!taken.has(`${root}-${i}`)) return `${root}-${i}`
 }
@@ -167,6 +189,13 @@ export async function saveArticle(
     if ((existing?.status === 'published' || existing?.status === 'scheduled') && (await hasMissingImages({ heroId: hero?.mediaId ?? null, blocks })))
       throw new UserError(MISSING_IMAGE)
     const slug = await uniqueSlug(d.slug || d.title, d.sectionId, d.id)
+    // Ficha de la reseña: solo en la sección Reseñas, con la portada resuelta desde la biblioteca.
+    const [sec] = await db.select({ slug: sections.slug }).from(sections).where(eq(sections.id, d.sectionId))
+    let review: ArticleReview | null = null
+    if (sec?.slug === REVIEW_SECTION && d.review) {
+      const [cover] = d.review.coverId ? await db.select({ key: media.key }).from(media).where(eq(media.id, d.review.coverId)) : []
+      review = { ...d.review, coverId: cover ? d.review.coverId : null, cover: cover?.key ?? '' }
+    }
     const values = {
       title: d.title,
       lead: d.lead,
@@ -181,6 +210,7 @@ export async function saveArticle(
       inNewsletter: d.news,
       breaking: d.flash,
       live: d.live,
+      review,
       updatedBy: u.id,
     }
     const [row] = existing

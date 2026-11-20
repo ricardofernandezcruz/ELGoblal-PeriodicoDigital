@@ -20,7 +20,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const d = await getArticle(seccion, slug)
   if (!d) return { title: 'Nota no encontrada · El Global' }
   const a = d.article
-  const image = a.hero?.src.startsWith('http') ? [{ url: a.hero.src, alt: a.hero.alt }] : undefined
+  const img = a.hero?.src ?? (a.review?.cover || undefined)
+  const image = img?.startsWith('http') ? [{ url: img, alt: a.hero?.alt || a.review?.work || a.title }] : undefined
   return {
     title: `${a.title} · El Global`,
     description: a.seo || a.lead,
@@ -55,6 +56,27 @@ export default async function Page({ params }: Props) {
           isAccessibleForFree: true,
         }}
       />
+      {a.review && (
+        <JsonLd
+          data={{
+            '@context': 'https://schema.org',
+            '@type': 'Review',
+            name: a.title,
+            reviewBody: a.review.verdict || a.lead,
+            datePublished: a.date,
+            author: a.au ? { '@type': 'Person', name: a.au } : { '@type': 'Organization', name: 'El Global' },
+            publisher: { '@type': 'Organization', name: 'El Global' },
+            reviewRating: { '@type': 'Rating', ratingValue: a.review.rating, bestRating: 5, worstRating: 0.5 },
+            itemReviewed: {
+              '@type': 'Book',
+              name: a.review.work,
+              author: a.review.author ? { '@type': 'Person', name: a.review.author } : undefined,
+              isbn: a.review.isbn || undefined,
+              image: a.review.cover || undefined,
+            },
+          }}
+        />
+      )}
       <ArticleView {...d} minutes={readingMinutes(a)} menu={menu} ads={ads} />
     </>
   )

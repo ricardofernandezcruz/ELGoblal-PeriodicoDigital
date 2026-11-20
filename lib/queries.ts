@@ -1,8 +1,9 @@
 import 'server-only'
-import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/db'
-import { articles, articleSections, authors, comments, liveUpdates, media, sections, type ArticleBlock } from '@/db/schema'
+import { articles, articleSections, authors, comments, liveUpdates, media, sections, type ArticleBlock, type ReviewData } from '@/db/schema'
+import { REVIEW_SECTION, type ReviewKind } from './review-shared'
 import { getHome } from './newsroom'
 import { plainText } from './rich-text'
 
@@ -39,7 +40,8 @@ const cardCols = {
   au: authors.name,
   date: liveDate,
   reads: articles.reads,
-  img: media.key,
+  // Las reseñas sin foto usan la portada del libro.
+  img: sql<string | null>`coalesce(${media.key}, nullif(${articles.review}->>'cover', ''))`,
   alt: media.alt,
   live: articles.live,
 }
@@ -152,8 +154,26 @@ export type FullArticle = {
   /** Crédito de cada imagen de la nota, por URL. */
   credits: Record<string, string>
   live: boolean
+  /** Ficha de la obra, si es una reseña. */
+  review: ReviewData | null
   updatedAt: string
   updates: LiveUpdate[]
+}
+
+export type ReviewCard = Card & { review: ReviewData }
+
+/** Reseñas publicadas (de un tipo, si se indica), la más reciente primero. */
+export async function getReviews(kind?: ReviewKind): Promise<ReviewCard[]> {
+  const rows = await db
+    .select({ ...cardCols, review: articles.review })
+    .from(articles)
+    .innerJoin(sections, eq(articles.sectionId, sections.id))
+    .leftJoin(authors, eq(articles.authorId, authors.id))
+    .leftJoin(media, eq(articles.heroId, media.id))
+    .where(and(isLive(), eq(sections.slug, REVIEW_SECTION), isNotNull(articles.review), kind ? sql`${articles.review}->>'kind' = ${kind}` : undefined))
+    .orderBy(desc(liveDate))
+    .limit(60)
+  return rows.map(({ review, ...r }) => ({ ...toCard(r), review: review! }))
 }
 
 export type LiveUpdate = { id: string; title: string; body: string; important: boolean; at: string }
@@ -198,6 +218,7 @@ export async function getArticle(secSlug: string, slug: string) {
       heroCredit: media.credit,
       live: articles.live,
       updated: articles.updatedAt,
+      review: articles.review,
     })
     .from(articles)
     .innerJoin(sections, eq(articles.sectionId, sections.id))
@@ -249,6 +270,7 @@ export async function getArticle(secSlug: string, slug: string) {
     allowComments: a.allowComments,
     hero: a.heroSrc ? { src: a.heroSrc, alt: a.heroAlt ?? '' } : null,
     live: a.live,
+    review: a.review ?? null,
     updatedAt: a.updated.toISOString(),
     updates,
     credits: Object.fromEntries([...credited.map((m) => [m.key, m.credit]), ...(a.heroSrc && a.heroCredit ? [[a.heroSrc, a.heroCredit]] : [])]),

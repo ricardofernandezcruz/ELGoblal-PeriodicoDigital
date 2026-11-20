@@ -658,3 +658,68 @@ html[data-gift] body {
     transform: translate(-50%, -50%) scale(1.25) rotate(40deg);
   }
 }
+
+/* ---------- Libro en 3D (components/site/reviews.tsx) ----------
+   Portada, canto de páginas a la derecha y contraportada; gira hacia el lector al pasar el ratón. */
+.eg-book {
+  --w: 140px;
+  --t: calc(var(--w) * 0.14);
+  width: var(--w);
+  aspect-ratio: 2 / 3;
+  perspective: 1400px;
+  flex: none;
+}
+.eg-book-in {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateY(-28deg);
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.group:hover .eg-book-in,
+.group:focus-visible .eg-book-in {
+  transform: rotateY(-10deg) translateY(-6px);
+}
+.eg-book-front,
+.eg-book-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px 6px 6px 2px;
+  overflow: hidden;
+}
+.eg-book-front {
+  transform: translateZ(calc(var(--t) / 2));
+  background: #14181f;
+}
+.eg-book-front::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 10%;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.18) 45%, rgba(0, 0, 0, 0) 100%);
+}
+.eg-book-pages {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: var(--t);
+  left: calc(var(--w) - var(--t) / 2 - 3px);
+  transform: rotateY(90deg);
+  background: repeating-linear-gradient(90deg, #faf6ee 0 1px, #e3dccd 1px 3px);
+}
+.eg-book-back {
+  transform: translateZ(calc(var(--t) / -2));
+  background: #0e1218;
+  box-shadow: -14px 18px 30px -6px rgba(0, 0, 0, 0.45);
+}
+@keyframes eg-book-in {
+  from {
+    opacity: 0;
+    transform: rotateY(-70deg) translateX(-30px);
+  }
+}
+.eg-book-enter .eg-book-in {
+  animation: eg-book-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}

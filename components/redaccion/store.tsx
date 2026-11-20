@@ -226,6 +226,7 @@ export function AdminProvider({ me, initial, children }: { me: CurrentUser; init
           news: p.news,
           flash: p.flash,
           live: p.live,
+          review: p.review,
           mode: !can(me.role, 'article.publish') && (mode === 'now' || mode === 'sch') ? 'draft' : mode,
           est: p.status,
           when: loc(p.when ?? D(1, 7, 30)),

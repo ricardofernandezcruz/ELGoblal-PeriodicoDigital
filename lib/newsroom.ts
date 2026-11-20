@@ -158,6 +158,7 @@ export async function getEditorPayload(id: string): Promise<EditorPayload | null
     news: a.inNewsletter,
     flash: a.breaking,
     live: a.live,
+    review: a.review ?? null,
     createdBy: a.createdBy,
   }
 }

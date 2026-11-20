@@ -84,6 +84,28 @@ export type ArticleBlock =
   | { id: string; t: 'sum'; v: string }
   | { id: string; t: 'poll'; q: string; opts: string[] }
 
+/** Ficha de una reseña (sección Reseñas). kind: por ahora solo «libro»; luego cine, series, música… */
+export type ReviewData = {
+  kind: 'libro'
+  /** Título de la obra reseñada. */
+  work: string
+  author: string
+  publisher: string
+  year: number | null
+  pages: number | null
+  isbn: string
+  coverId: string | null
+  /** URL de la portada (se resuelve desde la biblioteca al guardar). */
+  cover: string
+  /** De 0,5 a 5, de medio en medio. */
+  rating: number
+  /** La reseña en una frase. */
+  verdict: string
+  /** Una cita del libro (aparece al «abrir» la portada). */
+  quote: string
+  buyUrl: string
+}
+
 export const articles = pgTable(
   'articles',
   {
@@ -108,6 +130,8 @@ export const articles = pgTable(
     breaking: boolean('breaking').notNull().default(false),
     /** Cobertura en vivo: la nota muestra actualizaciones que aparecen solas. */
     live: boolean('live').notNull().default(false),
+    /** Ficha de la obra si la nota es una reseña. */
+    review: jsonb('review').$type<ReviewData>(),
     reads: integer('reads').notNull().default(0),
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),

@@ -1,4 +1,5 @@
 /* Formas de datos que viajan entre el servidor y el panel de redacción. */
+import type { Review } from '@/lib/review-shared'
 import type { Role } from '@/lib/roles'
 
 export type Status = 'pub' | 'sch' | 'rev' | 'draft'
@@ -59,6 +60,8 @@ export type EditorPayload = {
   news: boolean
   flash: boolean
   live: boolean
+  /** Ficha de la obra, si es una reseña. */
+  review: Review | null
   createdBy: string | null
 }
 

@@ -57,6 +57,13 @@
       "when": 1794862576056,
       "tag": "0007_ads",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795174608965,
+      "tag": "0008_reviews",
+      "breakpoints": true
     }
   ]
 }
