@@ -64,6 +64,7 @@ export function Book3D({ review, width = 140, enter, className }: { review: Pick
 
 /* ---------- Cabecera de una reseña (en la nota) ---------- */
 
+/** Ficha del libro: arriba el libro centrado, que se puede abrir; abajo, la valoración y los datos. */
 export function ReviewHero({ review }: { review: ReviewData }) {
   const rows = [
     ['Autor', review.author],
@@ -73,31 +74,42 @@ export function ReviewHero({ review }: { review: ReviewData }) {
     ['ISBN', review.isbn],
   ].filter(([, v]) => v)
   return (
-    <section aria-label="Ficha del libro" className="mt-7 mb-9 grid overflow-hidden grid-cols-[auto_1fr] items-center gap-8 rounded-lg border border-eg-rule bg-eg-surface p-6 max-[720px]:grid-cols-1 max-[720px]:justify-items-center max-[720px]:p-4">
-      <PeelBook book={{ work: review.work, author: review.author, cover: review.cover, quote: review.quote, footer: <Stars value={review.rating} size={13} /> }} className="-mb-14 max-[720px]:-mb-16" />
-      <div className="min-w-0 max-[720px]:w-full">
-        <span className="text-[11px] font-bold tracking-[.14em] text-eg-accent uppercase">Reseña · {REVIEW_KINDS[review.kind].one}</span>
-        <h2 className="mt-1.5 mb-1 font-serif text-[28px] leading-[1.1] font-medium">{review.work}</h2>
-        {review.author && <p className="m-0 font-sans text-sm text-eg-muted">de {review.author}</p>}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Stars value={review.rating} size={24} />
-          <b className="font-sans text-sm">{ratingText(review.rating)}</b>
+    <section aria-label="Ficha del libro" className="mt-7 mb-9 overflow-hidden rounded-lg border border-eg-rule bg-eg-surface">
+      <div className="grid justify-items-center bg-[radial-gradient(60%_80%_at_50%_45%,color-mix(in_srgb,var(--color-eg-accent)_10%,transparent),transparent)] px-4 pt-7 pb-4">
+        <PeelBook
+          book={{ work: review.work, author: review.author, cover: review.cover, quote: review.quote, footer: <Stars value={review.rating} size={13} /> }}
+          sizeClass="[--s:.68] min-[420px]:[--s:.8] sm:[--s:.92]"
+        />
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(180px,220px)] gap-x-8 gap-y-5 border-t border-eg-rule bg-eg-card p-6 max-[640px]:grid-cols-1 max-[640px]:p-5">
+        <div className="min-w-0">
+          <span className="font-sans text-[11px] font-bold tracking-[.14em] text-eg-accent uppercase">Reseña · {REVIEW_KINDS[review.kind].one}</span>
+          <h2 className="mt-1.5 mb-1 font-serif text-[clamp(24px,3vw,30px)] leading-[1.1] font-medium">{review.work}</h2>
+          {review.author && <p className="m-0 font-sans text-sm text-eg-muted">de {review.author}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Stars value={review.rating} size={22} />
+            <b className="font-sans text-sm">{ratingText(review.rating)}</b>
+          </div>
+          {review.verdict && <p className="mt-4 mb-0 border-l-[3px] border-eg-accent pl-4 font-serif text-[19px] leading-snug italic">{review.verdict}</p>}
         </div>
-        {review.verdict && <p className="mt-4 mb-0 border-l-[3px] border-eg-accent pl-4 font-serif text-[21px] leading-snug italic">{review.verdict}</p>}
-        {rows.length > 0 && (
-          <dl className="mt-5 mb-0 grid grid-cols-[max-content_1fr] gap-x-5 gap-y-1 font-sans text-[13px]">
-            {rows.map(([k, v]) => (
-              <div key={k as string} className="contents">
-                <dt className="text-eg-muted">{k}</dt>
-                <dd className="m-0">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        {review.buyUrl && (
-          <a href={review.buyUrl} target="_blank" rel="nofollow noopener" className="mt-5 inline-flex min-h-10 items-center rounded-full border border-eg-rule bg-eg-bg px-4 font-sans text-sm font-semibold no-underline hover:border-eg-ink">
-            Dónde conseguirlo ↗
-          </a>
+        {(rows.length > 0 || review.buyUrl) && (
+          <div className="min-w-0 border-l border-eg-rule pl-6 font-sans max-[640px]:border-t max-[640px]:border-l-0 max-[640px]:pt-5 max-[640px]:pl-0">
+            {rows.length > 0 && (
+              <dl className="m-0 grid gap-2.5 text-[13px]">
+                {rows.map(([k, v]) => (
+                  <div key={k as string}>
+                    <dt className="text-[11px] font-semibold tracking-[.08em] text-eg-muted uppercase">{k}</dt>
+                    <dd className="m-0 leading-snug break-words">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {review.buyUrl && (
+              <a href={review.buyUrl} target="_blank" rel="nofollow noopener" className="mt-4 inline-flex min-h-10 items-center rounded-full border border-eg-rule bg-eg-bg px-4 text-sm font-semibold no-underline hover:border-eg-ink">
+                Dónde conseguirlo ↗
+              </a>
+            )}
+          </div>
         )}
       </div>
     </section>
@@ -169,9 +181,12 @@ export function ReviewsHub({ reviews, kind, menu }: { reviews: ReviewCard[]; kin
         ) : (
           <>
             {/* Reseña destacada: el libro se abre arrastrando la esquina */}
-            <section aria-label="Reseña destacada" className="grid grid-cols-[auto_1fr] items-center gap-10 overflow-hidden rounded-xl bg-eg-surface px-8 pt-8 pb-4 max-[900px]:grid-cols-1 max-[900px]:justify-items-center max-[900px]:px-4">
-              <PeelBook book={{ work: top.review.work, author: top.review.author, cover: top.review.cover, quote: top.review.quote, footer: <Stars value={top.review.rating} size={13} /> }} className="-mb-12" />
-              <div className="min-w-0 pb-6 max-[900px]:w-full">
+            <section aria-label="Reseña destacada" className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-12 overflow-hidden rounded-xl bg-eg-surface p-8 max-[1023px]:grid-cols-1 max-[1023px]:justify-items-center max-[1023px]:gap-6 max-[640px]:px-4 max-[640px]:pt-6">
+              <PeelBook
+                book={{ work: top.review.work, author: top.review.author, cover: top.review.cover, quote: top.review.quote, footer: <Stars value={top.review.rating} size={13} /> }}
+                sizeClass="[--s:.68] min-[420px]:[--s:.8] sm:[--s:.92] lg:[--s:1]"
+              />
+              <div className="w-full max-w-[560px] min-w-0">
                 <span className="text-[11px] font-bold tracking-[.14em] text-eg-accent uppercase">Reseña destacada · {REVIEW_KINDS[top.review.kind].one}</span>
                 <Link href={top.href} className="hover:underline hover:underline-offset-4">
                   <h2 className="mt-2 mb-2 font-serif text-[clamp(28px,3.4vw,42px)] leading-[1.08] font-medium tracking-[-.01em]">{top.title}</h2>

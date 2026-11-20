@@ -156,7 +156,9 @@ interface DragState {
   startOpen: boolean
 }
 
-export function PeelBook({ book, className }: { book: PeelBookData; className?: string }) {
+/** sizeClass fija la escala con la variable --s (por ejemplo «[--s:.7] sm:[--s:.9]»). El hueco que ocupa
+    el libro en la página es el mismo que se ve: 448×320 px multiplicados por --s. */
+export function PeelBook({ book, className, sizeClass = '[--s:.72] sm:[--s:.9] lg:[--s:1]' }: { book: PeelBookData; className?: string; sizeClass?: string }) {
   const reduce = useReducedMotion() ?? false
   const stageRef = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
@@ -252,7 +254,8 @@ export function PeelBook({ book, className }: { book: PeelBookData; className?: 
   }
 
   return (
-    <div className={cn('flex flex-col items-center gap-3', className)}>
+    <div className={cn('flex flex-col items-center gap-3', sizeClass, className)}>
+      <div className="h-[calc(320px*var(--s))] w-[calc(448px*var(--s))]">
       <div
         ref={stageRef}
         role="button"
@@ -266,7 +269,8 @@ export function PeelBook({ book, className }: { book: PeelBookData; className?: 
         onPointerEnter={(event) => handleHover(event, true)}
         onPointerLeave={(event) => handleHover(event, false)}
         onKeyDown={handleKeyDown}
-        className="relative h-80 w-md origin-top scale-[.8] cursor-grab touch-none rounded-2xl outline-none select-none focus-visible:ring-2 focus-visible:ring-eg-accent focus-visible:ring-offset-8 focus-visible:ring-offset-eg-bg active:cursor-grabbing max-[380px]:scale-[.7] sm:scale-100"
+        style={{ transform: 'scale(var(--s))' }}
+        className="relative h-80 w-md origin-top-left cursor-grab touch-none rounded-2xl outline-none select-none focus-visible:ring-2 focus-visible:ring-eg-accent focus-visible:ring-offset-8 focus-visible:ring-offset-eg-bg active:cursor-grabbing"
       >
         <motion.div style={{ x: shift }} className="absolute inset-0">
           <div className="absolute top-0 left-1/2 h-80 w-56">
@@ -318,6 +322,7 @@ export function PeelBook({ book, className }: { book: PeelBookData; className?: 
             </motion.div>
           </div>
         </motion.div>
+      </div>
       </div>
       <p className="m-0 text-xs text-eg-muted" aria-live="polite">
         {isOpen ? 'Arrastra la portada para cerrarlo' : 'Arrastra la esquina o toca el libro para abrirlo'}
