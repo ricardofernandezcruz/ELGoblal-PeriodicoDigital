@@ -2,6 +2,8 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Newsreader } from 'next/font/google'
 import Script from 'next/script'
+import { SiteInfoProvider } from '@/components/site/site-info'
+import { getSiteInfo } from '@/lib/site-info'
 import './globals.css'
 
 const newsreader = Newsreader({
@@ -50,14 +52,15 @@ export const viewport: Viewport = {
 const themeScript = `try{var t=localStorage.getItem('eg-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 try{if(location.pathname==='/'&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var d=new Date().toLocaleDateString('en-CA',{timeZone:'America/Santo_Domingo'});if(location.search.indexOf('regalo=1')>-1||localStorage.getItem('eg-gift')!==d)document.documentElement.dataset.gift=d}}catch(e){}`
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const info = await getSiteInfo()
   return (
     <html lang="es" className={`${newsreader.variable} ${inter.variable}`} suppressHydrationWarning>
       <body>
         <Script id="eg-theme" strategy="beforeInteractive">
           {themeScript}
         </Script>
-        {children}
+        <SiteInfoProvider value={info}>{children}</SiteInfoProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

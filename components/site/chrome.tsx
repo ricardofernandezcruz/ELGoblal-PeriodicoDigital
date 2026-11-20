@@ -8,7 +8,9 @@ import { BreakingBar, SearchPalette, SiteHeader, type MenuItem } from '@/compone
 import { cn } from '@/lib/utils'
 import type { AdMap } from '@/lib/ads-shared'
 import { AdsProvider } from './ads'
+import { SOCIALS } from '@/lib/site-info-shared'
 import { TopStrip } from './indicators'
+import { useSiteInfo } from './site-info'
 import { InstallBanner, useServiceWorker } from './pwa'
 
 /** Estructura común del sitio público: última hora, header, buscador, pie y barra inferior móvil. */
@@ -105,16 +107,32 @@ function SiteFooter({ menu }: { menu: MenuItem[] }) {
         ['Video', '/video'],
         ['Boletín diario', '/#t-news'],
         ['Guardadas', '/guardadas'],
+        ['Quiénes somos', '/quienes-somos'],
+        ['Contacto', '/contacto'],
       ],
     },
   ]
+  const info = useSiteInfo()
+  const socials = SOCIALS.filter(([id]) => info.socials[id])
   return (
     <footer className="mt-16 bg-eg-foot pt-10 pb-[100px] text-[#E8E4DC]">
       <div className="mx-auto grid max-w-[1240px] grid-cols-[2fr_repeat(3,1fr)] gap-6 px-5 text-sm max-[900px]:grid-cols-2 max-[480px]:grid-cols-1">
         <div>
           <div className="font-serif text-[30px] leading-none font-semibold tracking-[-.02em]">El Global</div>
           <p className="max-w-[34ch] opacity-70">Periodismo para entender el mundo.</p>
-          <p className="text-xs opacity-50">© {new Date().getFullYear()} El Global</p>
+          {socials.length > 0 && (
+            <div className="my-3 flex flex-wrap gap-2" aria-label="Redes sociales">
+              {socials.map(([id, name]) => (
+                <a key={id} href={info.socials[id]} target="_blank" rel="noopener me" className="rounded-full border border-white/20 px-3 py-1 text-xs opacity-90 hover:border-white/60">
+                  {name}
+                </a>
+              ))}
+            </div>
+          )}
+          <p className="text-xs opacity-50">
+            © {new Date().getFullYear()} {info.legalName || 'El Global'}
+            {info.rnc && ` · RNC ${info.rnc}`}
+          </p>
           <p className="text-[11px] opacity-40">
             Clima:{' '}
             <a href="https://open-meteo.com/" target="_blank" rel="noopener" className="underline">
@@ -138,6 +156,18 @@ function SiteFooter({ menu }: { menu: MenuItem[] }) {
           </div>
         ))}
       </div>
+      <nav aria-label="Información legal" className="mx-auto mt-8 flex max-w-[1240px] flex-wrap gap-x-5 gap-y-1 border-t border-white/10 px-5 pt-4 text-xs opacity-60">
+        {[
+          ['Privacidad', '/privacidad'],
+          ['Términos de uso', '/terminos'],
+          ['Normas de los comentarios', '/normas-de-comentarios'],
+          ['Correcciones', '/correcciones'],
+        ].map(([l, h]) => (
+          <Link key={h} href={h} className="hover:underline">
+            {l}
+          </Link>
+        ))}
+      </nav>
     </footer>
   )
 }

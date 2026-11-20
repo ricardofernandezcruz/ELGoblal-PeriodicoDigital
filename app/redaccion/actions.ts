@@ -16,6 +16,8 @@ import { mediaUsage, unavailableMedia } from '@/lib/media-usage'
 import { getEditorPayload, getNews, slugify, toMedia } from '@/lib/newsroom'
 import { pushCount, PushError, pushReady, sendPush } from '@/lib/push'
 import { sanitizeInline } from '@/lib/rich-text'
+import { getSiteInfo } from '@/lib/site-info'
+import { SOCIALS, type SiteInfo, type SocialId } from '@/lib/site-info-shared'
 import { fetchRemoteImage, RemoteImageError } from '@/lib/remote-image'
 import { deleteObject, putObject, StorageError } from '@/lib/storage'
 import { DB_STATUS, type ActionResult, type AdminMedia, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type MediaUse, type Status } from '@/lib/newsroom-types'
@@ -575,6 +577,43 @@ export async function sendNewsletterTest(): Promise<ActionResult<string>> {
       throw err
     }
     return u.email
+  })
+}
+
+/* ---------- Datos del periódico ---------- */
+
+const httpsUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((u) => !u || /^https:\/\/[^\s]+$/.test(u), 'Los enlaces de redes deben empezar por https://')
+const siteInfoSchema = z.object({
+  legalName: z.string().trim().max(160),
+  rnc: z.string().trim().max(20),
+  address: z.string().trim().max(300),
+  email: z.union([z.literal(''), z.email('Escribe un correo válido.')]),
+  phone: z.string().trim().max(40),
+  director: z.string().trim().max(120),
+  about: z.string().trim().max(5000),
+  socials: z.object(Object.fromEntries(SOCIALS.map(([id]) => [id, httpsUrl])) as Record<SocialId, typeof httpsUrl>),
+})
+
+export async function getSiteInfoForPanel(): Promise<ActionResult<SiteInfo>> {
+  return run(async () => {
+    await requirePermission('home.manage')
+    return getSiteInfo()
+  })
+}
+
+export async function saveSiteInfo(input: z.input<typeof siteInfoSchema>): Promise<ActionResult<void>> {
+  return run(async () => {
+    const u = await requirePermission('home.manage')
+    const parsed = siteInfoSchema.safeParse(input)
+    if (!parsed.success) throw new UserError(parsed.error.issues[0]?.message ?? 'Revisa los datos.')
+    const value = parsed.data
+    await db.insert(settings).values({ key: 'site', value, updatedBy: u.id }).onConflictDoUpdate({ target: settings.key, set: { value, updatedBy: u.id } })
+    await audit(u, 'site.save', 'settings', 'site')
+    refreshSite()
   })
 }
 

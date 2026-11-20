@@ -68,6 +68,17 @@ export async function getDigestCards(since: Date, limit = 8): Promise<Card[]> {
   return rows.map(toCard)
 }
 
+/** Notas publicadas para el mapa del sitio (las más recientes primero). */
+export async function getSitemapArticles(sinceHours?: number) {
+  return db
+    .select({ title: articles.title, slug: articles.slug, sec: sections.slug, date: liveDate, updated: articles.updatedAt, tags: articles.tags })
+    .from(articles)
+    .innerJoin(sections, eq(articles.sectionId, sections.id))
+    .where(and(isLive(), sinceHours ? sql`${liveDate} >= now() - make_interval(hours => ${sinceHours})` : undefined))
+    .orderBy(desc(liveDate))
+    .limit(sinceHours ? 1000 : 5000)
+}
+
 export async function getMenu() {
   return db.select({ name: sections.name, slug: sections.slug }).from(sections).where(eq(sections.inMenu, true)).orderBy(asc(sections.position))
 }
@@ -141,6 +152,7 @@ export type FullArticle = {
   /** Crédito de cada imagen de la nota, por URL. */
   credits: Record<string, string>
   live: boolean
+  updatedAt: string
   updates: LiveUpdate[]
 }
 
@@ -185,6 +197,7 @@ export async function getArticle(secSlug: string, slug: string) {
       heroAlt: media.alt,
       heroCredit: media.credit,
       live: articles.live,
+      updated: articles.updatedAt,
     })
     .from(articles)
     .innerJoin(sections, eq(articles.sectionId, sections.id))
@@ -236,6 +249,7 @@ export async function getArticle(secSlug: string, slug: string) {
     allowComments: a.allowComments,
     hero: a.heroSrc ? { src: a.heroSrc, alt: a.heroAlt ?? '' } : null,
     live: a.live,
+    updatedAt: a.updated.toISOString(),
     updates,
     credits: Object.fromEntries([...credited.map((m) => [m.key, m.credit]), ...(a.heroSrc && a.heroCredit ? [[a.heroSrc, a.heroCredit]] : [])]),
   }

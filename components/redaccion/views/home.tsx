@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getNewsletterStatus, getPushStatus, saveHome, saveMenu, sendBreakingPush, sendNewsletterTest, type NewsletterStatus } from '@/app/redaccion/actions'
+import { getNewsletterStatus, getPushStatus, getSiteInfoForPanel, saveHome, saveMenu, saveSiteInfo, sendBreakingPush, sendNewsletterTest, type NewsletterStatus } from '@/app/redaccion/actions'
+import { SOCIALS, type SiteInfo } from '@/lib/site-info-shared'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../store'
@@ -63,6 +64,70 @@ function NewsletterCard() {
         >
           <I n="bell" />
           {busy ? 'Enviando…' : 'Enviarme una prueba'}
+        </B>
+      </div>
+    </Card>
+  )
+}
+
+/** Razón social, contacto, «Quiénes somos» y redes: se usan en el pie, las páginas legales y los buscadores. */
+function SiteInfoCard() {
+  const { call, toast } = useAdmin()
+  const [s, setS] = useState<SiteInfo | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    getSiteInfoForPanel().then((r) => r.ok && setS(r.data))
+  }, [])
+  if (!s) return null
+  const field = (k: Exclude<keyof SiteInfo, 'socials' | 'about'>, label: string, ph = '') => (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={'si-' + k} className="text-[13px] font-semibold">
+        {label}
+      </label>
+      <input id={'si-' + k} className={inp} value={s[k]} placeholder={ph} onChange={(e) => setS({ ...s, [k]: e.target.value })} />
+    </div>
+  )
+  return (
+    <Card className={cp}>
+      <h3 className={h3}>Datos del periódico</h3>
+      <div className={`${sub} mb-3`}>Aparecen en el pie de página, en «Quiénes somos», «Contacto» y las páginas legales. Lo que quede vacío no se muestra.</div>
+      <div className="grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
+        {field('legalName', 'Razón social', 'Ej.: El Global Medios, S.R.L.')}
+        {field('rnc', 'RNC')}
+        {field('director', 'Director')}
+        {field('email', 'Correo de contacto', 'contacto@…')}
+        {field('phone', 'Teléfono')}
+        {field('address', 'Dirección')}
+      </div>
+      <div className="mt-3 flex flex-col gap-1.5">
+        <label htmlFor="si-about" className="text-[13px] font-semibold">
+          Texto de «Quiénes somos»
+        </label>
+        <textarea id="si-about" rows={4} className="min-h-[84px] w-full resize-y rounded-lg border border-eg-rule bg-eg-panel px-[11px] py-[9px] leading-[1.55]" value={s.about} onChange={(e) => setS({ ...s, about: e.target.value })} />
+        <span className={hint}>Deja una línea en blanco entre párrafos. Si lo dejas vacío, se usa un texto general.</span>
+      </div>
+      <b className="mt-4 mb-1.5 block text-[13px]">Redes sociales</b>
+      <div className="grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
+        {SOCIALS.map(([id, name]) => (
+          <div key={id} className="flex flex-col gap-1.5">
+            <label htmlFor={'so-' + id} className="text-[13px]">
+              {name}
+            </label>
+            <input id={'so-' + id} className={inp} inputMode="url" placeholder="https://…" value={s.socials[id]} onChange={(e) => setS({ ...s, socials: { ...s.socials, [id]: e.target.value } })} />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3">
+        <B
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            const ok = await call(saveSiteInfo(s))
+            setBusy(false)
+            if (ok !== undefined) toast('Datos del periódico guardados')
+          }}
+        >
+          {busy ? 'Guardando…' : 'Guardar datos'}
         </B>
       </div>
     </Card>
@@ -330,6 +395,7 @@ export function HomeView() {
           </Card>
 
           {allowed && <PushCard text={draft.breaking.text} />}
+          {allowed && <SiteInfoCard />}
           {allowed && <NewsletterCard />}
         </div>
 
