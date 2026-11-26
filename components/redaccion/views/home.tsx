@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getNewsletterStatus, getPushStatus, getSiteInfoForPanel, saveHome, saveMenu, saveSiteInfo, sendBreakingPush, sendNewsletterTest, type NewsletterStatus } from '@/app/redaccion/actions'
+import { BREAKING_HOURS, breakingUntil, type Breaking } from '@/lib/newsroom-types'
 import { SOCIALS, type SiteInfo } from '@/lib/site-info-shared'
 import { ArtImg } from '@/components/eg/art'
 import { cn } from '@/lib/utils'
@@ -9,6 +10,16 @@ import { useAdmin } from '../store'
 import { B, Card, cp, DlgRow, DlgTitle, Empty, h3, hint, I, inp, pageTitle, QL, Row2, sub, Switch } from '../ui'
 
 const NAMES = ['Nota principal', 'Secundaria 1', 'Secundaria 2']
+
+const hhmm = (ms: number) => new Date(ms).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'America/Santo_Domingo' })
+
+/** Cuándo se quita la banda: la hora guardada o, si al guardar se reinicia la cuenta, desde ese momento. */
+function breakingNote(saved: Breaking, draft: Breaking) {
+  if (!draft.on) return 'Apagada. Al encenderla y guardar, empieza la cuenta.'
+  const restart = !saved.on || !saved.at || saved.text !== draft.text || saved.hours !== draft.hours
+  if (restart) return `Al guardar se mostrará ${draft.hours ?? 8} horas, hasta el ${hhmm(Date.now() + (draft.hours ?? 8) * 36e5)}.`
+  return `En el sitio hasta el ${hhmm(breakingUntil(saved)!)}. Cambia el texto o la duración para reiniciar la cuenta.`
+}
 
 /** Estado del boletín diario, con vista previa y envío de prueba. */
 function NewsletterCard() {
@@ -220,10 +231,8 @@ export function HomeView() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(home) || JSON.stringify(secs) !== JSON.stringify(sections)
 
   const pub = news.filter((n) => n.st === 'pub')
-  const week = Date.now() - 7 * 864e5
-  const recent = pub.filter((n) => n.d && +new Date(n.d) >= week)
-  const top = [...(recent.length ? recent : pub)].sort((a, b) => b.r - a.r)
-  // Misma regla que el sitio: fija si está elegida, si no la más leída reciente que no esté usada.
+  const top = [...pub].sort((a, b) => +new Date(b.d ?? 0) - +new Date(a.d ?? 0))
+  // Misma regla que el sitio: fija si está elegida, si no la más reciente que no esté usada.
   const used = new Set<string>()
   const picks = draft.featured.map((id) => {
     const p = (id && pub.find((n) => n.id === id && !used.has(n.id))) || top.find((n) => !used.has(n.id)) || null
@@ -240,11 +249,13 @@ export function HomeView() {
 
   const save = async () => {
     setBusy(true)
-    const a = await call(saveHome(draft))
-    const b = a === undefined ? undefined : await call(saveMenu(secs.map((s) => ({ id: s.id, inMenu: s.inMenu }))))
+    const breaking = await call(saveHome(draft))
+    const b = breaking === undefined ? undefined : await call(saveMenu(secs.map((s) => ({ id: s.id, inMenu: s.inMenu }))))
     setBusy(false)
     if (b === undefined) return
-    setHome(draft)
+    const saved = { ...draft, breaking: breaking ?? draft.breaking }
+    setHome(saved)
+    setDraft(saved)
     setSections(secs)
     toast('Portada actualizada en el sitio')
   }
@@ -308,7 +319,7 @@ export function HomeView() {
                   ))}
                 </select>
                 <Row2 className="py-0.5">
-                  <span className={sub}>Que el sistema la elija (más leída reciente)</span>
+                  <span className={sub}>Que el sistema la elija (la más reciente)</span>
                   <Switch
                     checked={draft.featured[i] === null}
                     onChange={(v) =>
@@ -339,12 +350,30 @@ export function HomeView() {
               />
               <span className={hint}>{draft.breaking.text.length} de 120 caracteres</span>
             </div>
+            <div className="mt-3 flex flex-col gap-1.5">
+              <label htmlFor="ubh" className="text-[13px] font-semibold">
+                Se quita sola después de
+              </label>
+              <select
+                id="ubh"
+                className={inp}
+                value={draft.breaking.hours ?? 8}
+                onChange={(e) => setDraft((h) => ({ ...h, breaking: { ...h.breaking, hours: Number(e.target.value) } }))}
+              >
+                {BREAKING_HOURS.map((n) => (
+                  <option key={n} value={n}>
+                    {n} horas
+                  </option>
+                ))}
+              </select>
+              <span className={hint}>{breakingNote(home.breaking, draft.breaking)}</span>
+            </div>
           </Card>
 
           <Card className={cp}>
             <h3 className={h3}>Regalo de Navidad</h3>
             <div className={`${sub} mb-1.5`}>
-              Al entrar a la portada, un regalo se abre y deja ver el periódico. Sale una vez al día por lector y nunca a quien pidió menos animaciones.
+              Al entrar o recargar cualquier página del sitio, un regalo se abre y deja ver el periódico. No sale al pasar de una página a otra, ni a quien pidió menos animaciones.
             </div>
             <Row2>
               <span>Mostrar en estas fechas</span>

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /* Bienvenida de temporada: un regalo que se abre y deja ver el periódico (El Global es el regalo).
-   - Solo en la portada, una vez al día por visitante. El script del tema (app/layout.tsx) marca
-     html[data-gift] antes de pintar, así la portada no asoma antes de la animación.
+   - En cada carga de cualquier página pública (al entrar o recargar; no al navegar dentro del
+     sitio). El script del tema (app/layout.tsx) decide con las fechas del panel y marca
+     html[data-gift] antes de pintar, así la página no asoma antes de la animación.
    - Se salta tocando en cualquier parte, con Esc o con «Saltar».
    - Con «reducir movimiento» no se muestra.
    - Para verla de nuevo: /?regalo=1 */
@@ -13,9 +14,7 @@ type Phase = 'in' | 'shake' | 'open' | 'reveal' | 'done'
 
 const T = { shake: 900, open: 1750, reveal: 2250, done: 4300 }
 
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' })
-
-export function GiftIntro({ from, to }: { from: string; to: string }) {
+export function GiftIntro() {
   const [phase, setPhase] = useState<Phase | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -27,19 +26,11 @@ export function GiftIntro({ from, to }: { from: string; to: string }) {
     timers.current.forEach(clearTimeout)
     setPhase('done')
     delete document.documentElement.dataset.gift
-    try {
-      localStorage.setItem('eg-gift', today())
-    } catch {}
   }, [])
 
-  // Arranque: solo si el script marcó la página y estamos en temporada.
+  // Arranque: solo si el script marcó la página.
   useEffect(() => {
-    const d = document.documentElement.dataset.gift
-    if (!d) return
-    if (d < from || d > to) {
-      delete document.documentElement.dataset.gift
-      return
-    }
+    if (!document.documentElement.dataset.gift) return
     setPhase('in')
     const at = (ms: number, p: Phase) => timers.current.push(setTimeout(() => setPhase(p), ms))
     at(T.shake, 'shake')
@@ -47,7 +38,7 @@ export function GiftIntro({ from, to }: { from: string; to: string }) {
     at(T.reveal, 'reveal')
     timers.current.push(setTimeout(finish, T.done))
     return () => timers.current.forEach(clearTimeout)
-  }, [from, to, finish])
+  }, [finish])
 
   // Saltar: abre ya y revela enseguida.
   const skip = useCallback(() => {

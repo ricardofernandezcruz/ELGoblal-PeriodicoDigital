@@ -13,7 +13,7 @@ import { EmailError, emailReady, sendEmail } from '@/lib/email'
 import { imageKey, MAX_IMAGE, sniffImage } from '@/lib/image'
 import { buildDigest, digestEmail } from '@/lib/newsletter'
 import { mediaUsage, unavailableMedia } from '@/lib/media-usage'
-import { getEditorPayload, getNews, slugify, toMedia } from '@/lib/newsroom'
+import { getEditorPayload, getHome, getNews, slugify, toMedia } from '@/lib/newsroom'
 import { pushCount, PushError, pushReady, sendPush } from '@/lib/push'
 import { RESERVED_REVIEW_SLUGS, REVIEW_SECTION } from '@/lib/review-shared'
 import { sanitizeInline } from '@/lib/rich-text'
@@ -21,7 +21,7 @@ import { getSiteInfo } from '@/lib/site-info'
 import { SOCIALS, type SiteInfo, type SocialId } from '@/lib/site-info-shared'
 import { fetchRemoteImage, RemoteImageError } from '@/lib/remote-image'
 import { deleteObject, putObject, StorageError } from '@/lib/storage'
-import { DB_STATUS, type ActionResult, type AdminMedia, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type MediaUse, type Status } from '@/lib/newsroom-types'
+import { BREAKING_HOURS, DB_STATUS, type ActionResult, type Breaking, type AdminMedia, type AdminNews, type AdminUser, type AdminVersion, type Block, type EditorPayload, type MediaUse, type Status } from '@/lib/newsroom-types'
 import { can, canEditArticle } from '@/lib/permissions'
 import { ForbiddenError, getUser, requirePermission, type CurrentUser } from '@/lib/session'
 
@@ -693,23 +693,30 @@ export async function moderateComment(id: string, approve: boolean): Promise<Act
 
 const homeSchema = z.object({
   featured: z.array(z.uuid().nullable()).length(3),
-  breaking: z.object({ on: z.boolean(), text: z.string().max(120) }),
+  breaking: z.object({ on: z.boolean(), text: z.string().max(120), hours: z.number().refine((h) => (BREAKING_HOURS as readonly number[]).includes(h), 'Duración no válida.').default(8) }),
   gift: z
     .object({ on: z.boolean(), from: z.iso.date(), to: z.iso.date() })
     .refine((g) => g.from <= g.to, 'La fecha de fin debe ser posterior a la de inicio.')
     .optional(),
 })
 
-export async function saveHome(input: z.input<typeof homeSchema>): Promise<ActionResult<void>> {
+/** Guarda la portada. Devuelve la banda de última hora con su hora de inicio. */
+export async function saveHome(input: z.input<typeof homeSchema>): Promise<ActionResult<Breaking>> {
   return run(async () => {
     const u = await requirePermission('home.manage')
-    const value = homeSchema.parse(input)
+    const v = homeSchema.parse(input)
+    // La cuenta atrás de la banda empieza al encenderla, al cambiar el texto o la duración.
+    const prev = (await getHome()).breaking
+    const restart = v.breaking.on && (!prev.on || !prev.at || prev.text !== v.breaking.text || prev.hours !== v.breaking.hours)
+    const breaking: Breaking = { ...v.breaking, at: restart ? new Date().toISOString() : prev.at }
+    const value = { ...v, breaking }
     await db
       .insert(settings)
       .values({ key: 'home', value, updatedBy: u.id })
       .onConflictDoUpdate({ target: settings.key, set: { value, updatedBy: u.id } })
     await audit(u, 'home.save', 'settings', 'home', value)
     refreshSite()
+    return breaking
   })
 }
 

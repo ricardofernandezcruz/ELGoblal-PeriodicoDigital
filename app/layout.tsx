@@ -2,7 +2,9 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Newsreader } from 'next/font/google'
 import Script from 'next/script'
+import { GiftIntro } from '@/components/portada/gift'
 import { SiteInfoProvider } from '@/components/site/site-info'
+import { getHome } from '@/lib/newsroom'
 import { getSiteInfo } from '@/lib/site-info'
 import './globals.css'
 
@@ -48,19 +50,22 @@ export const viewport: Viewport = {
 }
 
 // Aplica el tema guardado antes de pintar, para evitar el parpadeo.
-// En la portada, marca también si toca la animación del regalo (una vez al día), para taparla antes de pintar.
-const themeScript = `try{var t=localStorage.getItem('eg-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
-try{if(location.pathname==='/'&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var d=new Date().toLocaleDateString('en-CA',{timeZone:'America/Santo_Domingo'});if(location.search.indexOf('regalo=1')>-1||localStorage.getItem('eg-gift')!==d)document.documentElement.dataset.gift=d}}catch(e){}`
+// Marca también si toca la animación del regalo, para taparlo todo antes de pintar: en cada carga de
+// cualquier página pública (no al navegar dentro del sitio) mientras esté encendida y en fechas.
+// /?regalo=1 la fuerza para verla desde el panel.
+const themeScript = (gift: { on: boolean; from: string; to: string }) => `try{var t=localStorage.getItem('eg-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
+try{var g=${JSON.stringify(gift)},p=location.pathname,d=new Date().toLocaleDateString('en-CA',{timeZone:'America/Santo_Domingo'});if(!/^\\/(redaccion|api)(\\/|$)/.test(p)&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&(location.search.indexOf('regalo=1')>-1||(g.on&&d>=g.from&&d<=g.to)))document.documentElement.dataset.gift=d}catch(e){}`
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const info = await getSiteInfo()
+  const [info, home] = await Promise.all([getSiteInfo(), getHome().catch(() => null)])
   return (
     <html lang="es" className={`${newsreader.variable} ${inter.variable}`} suppressHydrationWarning>
       <body>
         <Script id="eg-theme" strategy="beforeInteractive">
-          {themeScript}
+          {themeScript(home?.gift ?? { on: false, from: '', to: '' })}
         </Script>
         <SiteInfoProvider value={info}>{children}</SiteInfoProvider>
+        <GiftIntro />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

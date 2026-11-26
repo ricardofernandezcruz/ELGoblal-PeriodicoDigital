@@ -93,8 +93,8 @@ export async function getFrontPage() {
   const byReads = (l: Card[]) => [...l].sort((a, b) => b.reads - a.reads)
   const recent = all.filter((c) => +new Date(c.date) >= week)
 
-  // Destacadas: fijas desde el panel o, si están en automático, las más leídas recientes.
-  const auto = byReads(recent.length ? recent : all)
+  // Destacadas: fijas desde el panel o, si están en automático, las más recientes (`all` ya viene ordenada).
+  const auto = all
   const used = new Set<string>()
   const featured = home.featured.map((id) => {
     const pick = (id && all.find((c) => c.id === id && !used.has(c.id))) || auto.find((c) => !used.has(c.id)) || null

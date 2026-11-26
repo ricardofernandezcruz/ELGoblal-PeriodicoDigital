@@ -74,7 +74,12 @@ export type AdminComment = { id: string; who: string; text: string; on: string; 
 export type AdminSection = { id: string; name: string; slug: string; inMenu: boolean }
 export type AdminAuthor = { id: string; name: string }
 export type AdminUser = { id: string; name: string; email: string; role: Role; twoFactor: boolean; image: string | null; bio: string }
-export type AdminHome = { featured: (string | null)[]; breaking: { on: boolean; text: string }; gift: { on: boolean; from: string; to: string } }
+export type Breaking = { on: boolean; text: string; /** Horas que se muestra antes de quitarse sola. */ hours?: number; /** Desde cuándo se muestra (lo pone el servidor al activarla o cambiar el texto). */ at?: string }
+export type AdminHome = { featured: (string | null)[]; breaking: Breaking; gift: { on: boolean; from: string; to: string } }
+
+export const BREAKING_HOURS = [6, 8, 12] as const
+/** Momento (ms) en que la banda de última hora se quita sola, o null si no tiene hora de inicio. */
+export const breakingUntil = (b: Breaking) => (b.at ? +new Date(b.at) + (b.hours ?? 8) * 36e5 : null)
 export type AdminStats = { published: number; publishedMonth: number; reads: number; subscribers: number; pending: number }
 
 export type AdminData = {

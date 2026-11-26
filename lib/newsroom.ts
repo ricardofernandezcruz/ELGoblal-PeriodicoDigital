@@ -4,11 +4,11 @@ import { db } from '@/db'
 import { articles, articleSections, authors, comments, media, sections, settings, subscribers, user, videoChannels, videos, type HomeSettings } from '@/db/schema'
 import { mediaUsage } from './media-usage'
 import type { AdminChannel, AdminData, AdminHome, AdminMedia, AdminNews, AdminVideo, EditorPayload, MediaUse } from './newsroom-types'
-import { UI_STATUS } from './newsroom-types'
+import { breakingUntil, UI_STATUS } from './newsroom-types'
 
 export const DEFAULT_HOME: Required<HomeSettings> = {
   featured: [null, null, null],
-  breaking: { on: false, text: '' },
+  breaking: { on: false, text: '', hours: 8 },
   gift: { on: true, from: '2026-11-16', to: '2026-12-31' },
 }
 
@@ -92,7 +92,11 @@ export const toMedia = (m: typeof media.$inferSelect, use: MediaUse[] = []): Adm
 
 export async function getHome(): Promise<AdminHome> {
   const [row] = await db.select().from(settings).where(eq(settings.key, 'home'))
-  return { ...DEFAULT_HOME, ...((row?.value as HomeSettings) ?? {}) }
+  const home = { ...DEFAULT_HOME, ...((row?.value as HomeSettings) ?? {}) }
+  // La banda de última hora caduca sola: pasada su hora cuenta como apagada.
+  const until = breakingUntil(home.breaking)
+  if (home.breaking.on && until !== null && until <= Date.now()) home.breaking = { ...home.breaking, on: false }
+  return home
 }
 
 export async function getAdminData(): Promise<AdminData> {

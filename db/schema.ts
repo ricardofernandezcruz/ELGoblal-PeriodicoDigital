@@ -314,9 +314,10 @@ export const rateLimits = pgTable('rate_limits', {
 /* ---------- Portada y ajustes del sitio ---------- */
 
 export type HomeSettings = {
-  /** Notas destacadas: id fijo o null para que el sistema elija la más leída. */
+  /** Notas destacadas: id fijo o null para que el sistema elija la más reciente. */
   featured: (string | null)[]
-  breaking: { on: boolean; text: string }
+  /** Banda de última hora. Se quita sola `hours` horas después de `at`. */
+  breaking: { on: boolean; text: string; hours?: number; at?: string }
   /** Animación de regalo al entrar a la portada (temporada navideña). Fechas AAAA-MM-DD, hora de Santo Domingo. */
   gift?: { on: boolean; from: string; to: string }
 }

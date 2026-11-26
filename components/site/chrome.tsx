@@ -6,6 +6,7 @@ import { Icon } from '@/components/eg/icon'
 import { ToastProvider } from '@/components/eg/toast'
 import { BreakingBar, SearchPalette, SiteHeader, type MenuItem } from '@/components/portada/site-header'
 import { cn } from '@/lib/utils'
+import { breakingUntil, type Breaking } from '@/lib/newsroom-types'
 import type { AdMap } from '@/lib/ads-shared'
 import { AdsProvider } from './ads'
 import { SOCIALS } from '@/lib/site-info-shared'
@@ -22,7 +23,7 @@ export function SiteChrome({
   children,
 }: {
   menu: MenuItem[]
-  breaking?: { on: boolean; text: string }
+  breaking?: Breaking
   active?: string
   /** Anuncios de esta página, por espacio. */
   ads?: AdMap
@@ -39,7 +40,7 @@ export function SiteChrome({
   )
 }
 
-function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaking?: { on: boolean; text: string }; active: string; children: React.ReactNode }) {
+function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaking?: Breaking; active: string; children: React.ReactNode }) {
   const [megaOpen, setMegaOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const searchBtn = useRef<HTMLButtonElement>(null)
@@ -71,7 +72,7 @@ function Chrome({ menu, breaking, active, children }: { menu: MenuItem[]; breaki
 
   return (
     <>
-      {breaking?.on && <BreakingBar text={breaking.text} />}
+      {breaking?.on && <BreakingBar text={breaking.text} until={breakingUntil(breaking)} />}
       <TopStrip />
       <SiteHeader
         menu={menu}

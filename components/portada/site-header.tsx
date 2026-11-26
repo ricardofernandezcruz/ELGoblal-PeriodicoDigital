@@ -14,7 +14,8 @@ const iconBtn = 'grid size-10 place-items-center rounded border border-transpare
 
 export type MenuItem = { name: string; slug: string }
 
-export function BreakingBar({ text }: { text: string }) {
+/** Banda de última hora. Se esconde sola al llegar `until`, aunque la página venga de la caché. */
+export function BreakingBar({ text, until }: { text: string; until: number | null }) {
   const key = 'eg-breaking:' + text
   const [open, setOpen] = useState(true)
   useEffect(() => {
@@ -22,6 +23,14 @@ export function BreakingBar({ text }: { text: string }) {
       if (sessionStorage.getItem(key) === '0') setOpen(false)
     } catch {}
   }, [key])
+  useEffect(() => {
+    if (until === null) return
+    const left = until - Date.now()
+    if (left <= 0) return setOpen(false)
+    // setTimeout no admite más de ~24 días; la banda dura como mucho 12 horas.
+    const t = setTimeout(() => setOpen(false), left)
+    return () => clearTimeout(t)
+  }, [until])
   if (!open || !text) return null
   return (
     <div className="bg-eg-accent text-sm text-white">

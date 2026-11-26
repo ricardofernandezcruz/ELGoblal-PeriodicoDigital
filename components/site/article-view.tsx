@@ -208,7 +208,9 @@ function ArticleInner({ article: a, next, related, comments, minutes }: ArticleP
 
   useEffect(() => {
     const on = () => {
-      const r = ref.current!.getBoundingClientRect(),
+      // Al salir de la nota puede llegar un último scroll sin el artículo ya montado.
+      if (!ref.current) return
+      const r = ref.current.getBoundingClientRect(),
         h = r.height - innerHeight * 0.6
       const p = Math.max(0, Math.min(100, ((-r.top + innerHeight * 0.3) / h) * 100))
       setProg(p)
