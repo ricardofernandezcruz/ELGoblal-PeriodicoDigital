@@ -6,6 +6,7 @@ import { GiftIntro } from '@/components/portada/gift'
 import { SiteInfoProvider } from '@/components/site/site-info'
 import { getHome } from '@/lib/newsroom'
 import { getSiteInfo } from '@/lib/site-info'
+import { siteUrl } from '@/lib/site-url'
 import './globals.css'
 
 const newsreader = Newsreader({
@@ -24,6 +25,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
+  // Base para las direcciones relativas de canonical y Open Graph.
+  metadataBase: new URL(siteUrl()),
   title: 'El Global — El mundo en una sola mirada',
   description: 'Noticias globales, análisis y opinión para entender el mundo.',
   icons: {

@@ -26,8 +26,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${a.title} · El Global`,
     description: a.seo || a.lead,
     alternates: { canonical: `/${a.secSlug}/${slug}` },
-    openGraph: { type: 'article', title: a.title, description: a.seo || a.lead, publishedTime: a.date, section: a.sec, tags: a.tags, images: image },
-    twitter: { card: image ? 'summary_large_image' : 'summary', title: a.title, description: a.seo || a.lead },
+    openGraph: {
+      type: 'article',
+      siteName: 'El Global',
+      locale: 'es_DO',
+      url: `/${a.secSlug}/${slug}`,
+      title: a.title,
+      description: a.seo || a.lead,
+      publishedTime: a.date,
+      section: a.sec,
+      tags: a.tags,
+      images: image,
+    },
+    twitter: { card: image ? 'summary_large_image' : 'summary', site: '@elglobalcomdo', title: a.title, description: a.seo || a.lead },
   }
 }
 
